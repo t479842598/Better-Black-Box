@@ -113,6 +113,12 @@
           </label>
         </div>
       </div>
+      <div class="better-settings__section better-settings__highlight-section">
+        <div class="better-settings__section-title">关键词高亮</div>
+        <div class="better-settings__desc">信息流标题和评论正文命中关键词时自动高亮；多个关键词可用逗号、空格或换行分隔。</div>
+        <textarea class="better-settings__textarea better-settings__highlight-keywords" placeholder="例如：折扣 攻略 避雷">${escapeHtml(highlightKeywords.join("\n"))}</textarea>
+      </div>
+      ${renderReadLaterSettingsContent()}
       ${renderThemeSettingsContent()}
       <!-- 推广位（已隐藏）：插件沟通群 + 开源项目。如需恢复显示，将下方注释块取消注释。 -->
       <!--
@@ -180,6 +186,7 @@
       bindFeedLayoutRangeInputs(panel);
       bindThemeSettings(panel);
       mountAccountBar(panel);
+      refreshReadLaterList(panel);
       readMentionNotifySettingsFromStorage().then((settings) => {
         const toggle = panel.querySelector(".better-settings__mention-notify-toggle");
         if (toggle) {

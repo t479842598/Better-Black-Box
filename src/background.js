@@ -32,6 +32,9 @@
   const THEME_STORAGE_KEY = "better-xiaoheihe-theme";
   const MENTION_NOTIFY_STORAGE_KEY = "better-xiaoheihe-mention-notify";
   const MENTION_NOTIFY_ALARM_NAME = "better-xiaoheihe-mention-notify";
+  const HIGHLIGHT_KEYWORDS_STORAGE_KEY = "better-xiaoheihe-highlight-keywords";
+  const COMMENT_DRAFT_STORAGE_KEY = "better-xiaoheihe-comment-drafts";
+  const READ_LATER_STORAGE_KEY = "better-xiaoheihe-read-later";
 
   const LOCAL_SETTINGS_STORAGE_KEYS = [
     HIDE_CY_COMMENTS_STORAGE_KEY,
@@ -49,7 +52,8 @@
     FEED_LAYOUT_SETTINGS_STORAGE_KEY,
     HOT_SEARCH_DISABLED_STORAGE_KEY,
     ACCOUNT_PROFILE_STORAGE_KEY,
-    THEME_STORAGE_KEY
+    THEME_STORAGE_KEY,
+    HIGHLIGHT_KEYWORDS_STORAGE_KEY
   ];
 
   const LOCAL_SETTINGS_REQUEST_EVENT = "better-xiaoheihe-local-settings-request";

@@ -106,6 +106,24 @@
         return;
       }
 
+      const readLaterExportButton = event.target.closest(".better-settings__read-later-export");
+      if (readLaterExportButton && panel.contains(readLaterExportButton)) {
+        readReadLaterItems().then((items) => exportReadLaterMarkdown(items));
+        return;
+      }
+
+      const readLaterClearButton = event.target.closest(".better-settings__read-later-clear");
+      if (readLaterClearButton && panel.contains(readLaterClearButton)) {
+        writeReadLaterItems([]).then(() => refreshReadLaterList(panel));
+        return;
+      }
+
+      const readLaterRemoveButton = event.target.closest("[data-read-later-remove]");
+      if (readLaterRemoveButton && panel.contains(readLaterRemoveButton)) {
+        removeReadLaterItem(readLaterRemoveButton.dataset.readLaterRemove).then(() => refreshReadLaterList(panel));
+        return;
+      }
+
       const mentionNotifyToggleButton = event.target.closest(".better-settings__mention-notify-toggle");
       if (mentionNotifyToggleButton && panel.contains(mentionNotifyToggleButton)) {
         const nextEnabled = !mentionNotifySettings.enabled;
@@ -368,6 +386,16 @@
 
       if (event.target.matches(".better-settings__ai-enabled, .better-settings__ai-allow-emoji, .better-settings__ai-auto-popup")) {
         saveAiSettingsFromPanel(panel);
+        return;
+      }
+
+      if (event.target.matches(".better-settings__highlight-keywords")) {
+        highlightKeywords = normalizeKeywordList(event.target.value);
+        saveLocalSettings({
+          [HIGHLIGHT_KEYWORDS_STORAGE_KEY]: highlightKeywords
+        });
+        resetKeywordHighlights();
+        scanKeywordHighlights();
         return;
       }
 

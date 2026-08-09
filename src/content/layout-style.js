@@ -6228,6 +6228,40 @@
         margin-top: 10px;
       }
 
+      /* ===== 关键词高亮 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-highlight-mark,
+      mark.better-highlight-mark {
+        padding: 0 1px;
+        border-radius: 3px;
+        background: #ffe58f;
+        color: inherit;
+      }
+      html[data-better-theme="dark"] mark.better-highlight-mark {
+        filter: invert(1) hue-rotate(180deg);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__highlight-section {
+        margin-top: 10px;
+      }
+
+      /* ===== 详情页：只看楼主 ===== */
+      .${HOME_LAYOUT_CLASS} .link-comment .better-comment-preview__owner-toggle {
+        padding: 4px 10px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .${HOME_LAYOUT_CLASS} .link-comment .better-comment-preview__owner-toggle:hover {
+        background: rgba(0, 0, 0, 0.05);
+      }
+      .${HOME_LAYOUT_CLASS} .link-comment .better-comment-preview__owner-toggle.is-active {
+        border-color: #ff9d00;
+        color: #ff8a00;
+        font-weight: 600;
+      }
+
     `;
     document.documentElement.appendChild(style);
   }

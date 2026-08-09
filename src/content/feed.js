@@ -1532,6 +1532,7 @@
       } else {
         appendCreatedReplyComment(linkId, rootCommentId, replyCommentId, data, text);
       }
+      removeCommentDraftForForm(preview, form);
     }).catch((error) => {
       setReplyFormSending(form, false);
       setReplyFormStatus(form, error?.message || "发送失败", true);

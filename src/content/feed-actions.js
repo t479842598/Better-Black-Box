@@ -383,6 +383,7 @@
 
     bindFeedItemActions(item, linkId);
     ensureAiSummaryButton(item);
+    ensureFeedItemReadLaterButton(item, linkId);
     ensureFeedItemUserLevel(item);
     setFeedItemPublishTime(item, commentCache.get(linkId)?.linkCreateAt);
 

@@ -32,6 +32,9 @@
   const THEME_STORAGE_KEY = "better-xiaoheihe-theme";
   const MENTION_NOTIFY_STORAGE_KEY = "better-xiaoheihe-mention-notify";
   const MENTION_NOTIFY_ALARM_NAME = "better-xiaoheihe-mention-notify";
+  const HIGHLIGHT_KEYWORDS_STORAGE_KEY = "better-xiaoheihe-highlight-keywords";
+  const COMMENT_DRAFT_STORAGE_KEY = "better-xiaoheihe-comment-drafts";
+  const READ_LATER_STORAGE_KEY = "better-xiaoheihe-read-later";
 
   const LOCAL_SETTINGS_STORAGE_KEYS = [
     HIDE_CY_COMMENTS_STORAGE_KEY,
@@ -49,7 +52,8 @@
     FEED_LAYOUT_SETTINGS_STORAGE_KEY,
     HOT_SEARCH_DISABLED_STORAGE_KEY,
     ACCOUNT_PROFILE_STORAGE_KEY,
-    THEME_STORAGE_KEY
+    THEME_STORAGE_KEY,
+    HIGHLIGHT_KEYWORDS_STORAGE_KEY
   ];
 
   const LOCAL_SETTINGS_REQUEST_EVENT = "better-xiaoheihe-local-settings-request";
@@ -399,6 +403,7 @@
   let activeSettingsTab = SETTINGS_TABS.GENERAL;
   let hotSearchPromise = null;
   let hotSearchDisabled = false;
+  let highlightKeywords = [];
   let leftMenuOriginalPosition = null;
   let emojiPromise = null;
   let scheduled = false;
@@ -1129,6 +1134,7 @@
     emojiUsageStats = normalizeEmojiUsageStats(values[COMMENT_EMOJI_USAGE_STORAGE_KEY]);
     feedLayoutSettings = normalizeFeedLayoutSettings(values[FEED_LAYOUT_SETTINGS_STORAGE_KEY]);
     hotSearchDisabled = values[HOT_SEARCH_DISABLED_STORAGE_KEY] === true;
+    highlightKeywords = normalizeKeywordList(values[HIGHLIGHT_KEYWORDS_STORAGE_KEY]);
     applyFeedLayoutSettings();
   }
 
@@ -7447,6 +7453,40 @@
         margin-top: 10px;
       }
 
+      /* ===== 关键词高亮 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-highlight-mark,
+      mark.better-highlight-mark {
+        padding: 0 1px;
+        border-radius: 3px;
+        background: #ffe58f;
+        color: inherit;
+      }
+      html[data-better-theme="dark"] mark.better-highlight-mark {
+        filter: invert(1) hue-rotate(180deg);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__highlight-section {
+        margin-top: 10px;
+      }
+
+      /* ===== 详情页：只看楼主 ===== */
+      .${HOME_LAYOUT_CLASS} .link-comment .better-comment-preview__owner-toggle {
+        padding: 4px 10px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .${HOME_LAYOUT_CLASS} .link-comment .better-comment-preview__owner-toggle:hover {
+        background: rgba(0, 0, 0, 0.05);
+      }
+      .${HOME_LAYOUT_CLASS} .link-comment .better-comment-preview__owner-toggle.is-active {
+        border-color: #ff9d00;
+        color: #ff8a00;
+        font-weight: 600;
+      }
+
     `;
     document.documentElement.appendChild(style);
   }
@@ -11525,6 +11565,7 @@
       } else {
         appendCreatedReplyComment(linkId, rootCommentId, replyCommentId, data, text);
       }
+      removeCommentDraftForForm(preview, form);
     }).catch((error) => {
       setReplyFormSending(form, false);
       setReplyFormStatus(form, error?.message || "发送失败", true);
@@ -13410,6 +13451,7 @@
 
     bindFeedItemActions(item, linkId);
     ensureAiSummaryButton(item);
+    ensureFeedItemReadLaterButton(item, linkId);
     ensureFeedItemUserLevel(item);
     setFeedItemPublishTime(item, commentCache.get(linkId)?.linkCreateAt);
 
@@ -13602,6 +13644,391 @@
   }
 
   // END src\content\feed-actions.js
+  // BEGIN src\content\keyword-highlight.js
+// 信息流标题 / 评论正文关键词高亮。
+  const HIGHLIGHT_TARGET_SELECTOR = [
+    ".bbs-content__title",
+    ".better-comment-preview__text",
+    ".better-comment-preview__reply-text"
+  ].join(",");
+
+  const HIGHLIGHT_PROCESSED_ATTR = "data-better-highlighted";
+
+  function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function getHighlightKeywordPattern() {
+    const keywords = (highlightKeywords || []).filter((item) => String(item || "").trim());
+    if (!keywords.length) {
+      return null;
+    }
+    return new RegExp(keywords.map((keyword) => escapeRegExp(keyword.trim())).join("|"), "g");
+  }
+
+  function highlightTextNode(textNode, pattern) {
+    const text = textNode.nodeValue || "";
+    if (!pattern || !pattern.test(text)) {
+      return false;
+    }
+    pattern.lastIndex = 0;
+    const fragment = document.createDocumentFragment();
+    let lastIndex = 0;
+    let matched = false;
+    text.replace(pattern, (match, offset) => {
+      matched = true;
+      if (offset > lastIndex) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex, offset)));
+      }
+      const mark = document.createElement("mark");
+      mark.className = "better-highlight-mark";
+      mark.textContent = match;
+      fragment.appendChild(mark);
+      lastIndex = offset + match.length;
+      return match;
+    });
+    if (matched) {
+      if (lastIndex < text.length) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+      }
+      textNode.parentNode?.replaceChild(fragment, textNode);
+    }
+    return matched;
+  }
+
+  function applyKeywordHighlightToElement(element) {
+    if (!(element instanceof Element) || element.dataset.betterHighlighted === "true") {
+      return;
+    }
+    if (element.closest("script, style, mark, [data-better-highlighted]")) {
+      return;
+    }
+    const pattern = getHighlightKeywordPattern();
+    if (!pattern) {
+      return;
+    }
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        if (!node.nodeValue?.trim()) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        if (node.parentElement?.closest("script, style, mark")) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    let changed = false;
+    const textNodes = [];
+    while (walker.nextNode()) {
+      textNodes.push(walker.currentNode);
+    }
+    textNodes.forEach((textNode) => {
+      if (highlightTextNode(textNode, pattern)) {
+        changed = true;
+      }
+    });
+    if (changed) {
+      element.dataset.betterHighlighted = "true";
+    }
+  }
+
+  function scanKeywordHighlights() {
+    const pattern = getHighlightKeywordPattern();
+    if (!pattern) {
+      return;
+    }
+    document.querySelectorAll(HIGHLIGHT_TARGET_SELECTOR).forEach((element) => {
+      applyKeywordHighlightToElement(element);
+    });
+  }
+
+  function resetKeywordHighlights() {
+    document.querySelectorAll(`[${HIGHLIGHT_PROCESSED_ATTR}]`).forEach((element) => {
+      element.querySelectorAll("mark.better-highlight-mark").forEach((mark) => {
+        mark.replaceWith(document.createTextNode(mark.textContent || ""));
+      });
+      delete element.dataset.betterHighlighted;
+    });
+  }
+
+  function applyKeywordHighlightsAndObserve() {
+    scanKeywordHighlights();
+    const observer = new MutationObserver(() => {
+      window.clearTimeout(highlightScanTimer);
+      highlightScanTimer = window.setTimeout(scanKeywordHighlights, 300);
+    });
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+    return observer;
+  }
+
+  let highlightScanTimer = 0;
+  // END src\content\keyword-highlight.js
+  // BEGIN src\content\read-later.js
+// 稍后读：信息流卡片一键收藏，通用设置中管理并导出 Markdown。
+  const READ_LATER_MAX_ITEMS = 200;
+
+  function normalizeReadLaterItem(item = {}) {
+    return {
+      linkId: String(item?.linkId || ""),
+      title: String(item?.title || "").slice(0, 200),
+      url: String(item?.url || ""),
+      savedAt: Number(item?.savedAt || 0)
+    };
+  }
+
+  function readReadLaterItems() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(READ_LATER_STORAGE_KEY, (result) => {
+        const items = Array.isArray(result?.[READ_LATER_STORAGE_KEY])
+          ? result[READ_LATER_STORAGE_KEY].map(normalizeReadLaterItem).filter((item) => item.linkId)
+          : [];
+        resolve(items);
+      });
+    });
+  }
+
+  function writeReadLaterItems(items) {
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [READ_LATER_STORAGE_KEY]: items.slice(0, READ_LATER_MAX_ITEMS) }, resolve);
+    });
+  }
+
+  async function isInReadLater(linkId) {
+    const items = await readReadLaterItems();
+    return items.some((item) => String(item.linkId) === String(linkId));
+  }
+
+  async function addReadLaterItem(item) {
+    const normalized = normalizeReadLaterItem(item);
+    if (!normalized.linkId) {
+      return;
+    }
+    const items = await readReadLaterItems();
+    if (!items.some((existing) => String(existing.linkId) === String(normalized.linkId))) {
+      items.unshift(normalized);
+      await writeReadLaterItems(items);
+    }
+  }
+
+  async function removeReadLaterItem(linkId) {
+    const items = await readReadLaterItems();
+    const nextItems = items.filter((item) => String(item.linkId) !== String(linkId));
+    if (nextItems.length !== items.length) {
+      await writeReadLaterItems(nextItems);
+    }
+  }
+
+  function ensureFeedItemReadLaterButton(item, linkId) {
+    if (!linkId || item.querySelector(".better-read-later-btn")) {
+      return;
+    }
+    const bottomMainRow = item.querySelector(".bbs-new-style-bottom__main-row");
+    const mount = bottomMainRow || item.querySelector(".content-list__bottom--right") || item;
+    const button = document.createElement("button");
+    button.className = "better-read-later-btn";
+    button.type = "button";
+    button.textContent = "稍后读";
+    button.title = "收藏到稍后读";
+    button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const saved = await isInReadLater(linkId);
+      if (saved) {
+        await removeReadLaterItem(linkId);
+        button.textContent = "稍后读";
+        button.classList.remove("is-saved");
+        button.title = "收藏到稍后读";
+      } else {
+        const title = item.querySelector(".bbs-content__title")?.textContent?.trim()
+          || item.querySelector(".content-list__title")?.textContent?.trim()
+          || "";
+        const url = item.querySelector("a[href*='/app/bbs/link/']")?.href
+          || `https://www.xiaoheihe.cn/app/bbs/link/${linkId}`;
+        await addReadLaterItem({ linkId, title, url, savedAt: Date.now() });
+        button.textContent = "已收藏";
+        button.classList.add("is-saved");
+        button.title = "点击取消收藏";
+      }
+    });
+    isInReadLater(linkId).then((saved) => {
+      if (saved) {
+        button.textContent = "已收藏";
+        button.classList.add("is-saved");
+        button.title = "点击取消收藏";
+      }
+    });
+    mount.appendChild(button);
+  }
+
+  function renderReadLaterSettingsContent() {
+    return `
+      <div class="better-settings__section better-settings__read-later-section">
+        <div class="better-settings__section-title">稍后读</div>
+        <div class="better-settings__desc">信息流卡片上的“稍后读”按钮收藏的帖子。</div>
+        <div class="better-settings__read-later-actions">
+          <button class="better-settings__text-button better-settings__read-later-export" type="button">导出 Markdown</button>
+          <button class="better-settings__text-button better-settings__read-later-clear" type="button">清空列表</button>
+        </div>
+        <div class="better-settings__read-later-list" data-read-later-list>加载中…</div>
+      </div>
+    `;
+  }
+
+  function renderReadLaterListHtml(items) {
+    if (!items.length) {
+      return '<div class="better-settings__empty">暂无收藏</div>';
+    }
+    return items.map((item) => `
+      <div class="better-settings__read-later-item">
+        <a class="better-settings__read-later-link" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(item.title)}">${escapeHtml(item.title || item.linkId)}</a>
+        <span class="better-settings__read-later-time">${escapeHtml(new Date(item.savedAt).toLocaleString("zh-CN", { hour12: false }))}</span>
+        <button class="better-settings__remove" type="button" data-read-later-remove="${escapeHtml(item.linkId)}" aria-label="删除">×</button>
+      </div>
+    `).join("");
+  }
+
+  async function refreshReadLaterList(panel) {
+    const list = panel?.querySelector("[data-read-later-list]");
+    if (!list) {
+      return;
+    }
+    const items = await readReadLaterItems();
+    list.innerHTML = renderReadLaterListHtml(items);
+  }
+
+  function exportReadLaterMarkdown(items) {
+    const lines = [
+      "# 稍后读收藏",
+      "",
+      `共 ${items.length} 条 · 导出时间 ${new Date().toLocaleString("zh-CN", { hour12: false })}`,
+      ""
+    ];
+    items.forEach((item, index) => {
+      lines.push(`${index + 1}. [${item.title || item.linkId}](${item.url || ""})`);
+    });
+    const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `better-xiaoheihe-read-later-${new Date().toISOString().slice(0, 10)}.md`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+  // END src\content\read-later.js
+  // BEGIN src\content\comment-draft.js
+// 评论草稿箱：输入自动保存，意外刷新/关闭后自动恢复。
+  function getCommentDraftKey(preview, form) {
+    const linkId = preview?.dataset?.linkId || "";
+    const commentId = form?.dataset?.commentId || "";
+    return `${linkId}:${commentId}`;
+  }
+
+  function getCommentDraftText(editor) {
+    return String(editor?.innerText || "").trim();
+  }
+
+  function readCommentDrafts() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(COMMENT_DRAFT_STORAGE_KEY, (result) => {
+        resolve(result?.[COMMENT_DRAFT_STORAGE_KEY] || {});
+      });
+    });
+  }
+
+  function writeCommentDrafts(drafts) {
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [COMMENT_DRAFT_STORAGE_KEY]: drafts }, resolve);
+    });
+  }
+
+  async function saveCommentDraft(preview, form, text) {
+    const key = getCommentDraftKey(preview, form);
+    if (!key || key === ":") {
+      return;
+    }
+    const drafts = await readCommentDrafts();
+    if (text) {
+      drafts[key] = text;
+    } else {
+      delete drafts[key];
+    }
+    await writeCommentDrafts(drafts);
+  }
+
+  async function removeCommentDraftForForm(preview, form) {
+    const key = getCommentDraftKey(preview, form);
+    if (!key || key === ":") {
+      return;
+    }
+    const drafts = await readCommentDrafts();
+    if (key in drafts) {
+      delete drafts[key];
+      await writeCommentDrafts(drafts);
+    }
+  }
+
+  async function restoreCommentDraftForForm(preview, form) {
+    const editor = form?.querySelector(".better-comment-preview__reply-input");
+    if (!editor || getCommentDraftText(editor)) {
+      return;
+    }
+    const key = getCommentDraftKey(preview, form);
+    if (!key || key === ":") {
+      return;
+    }
+    const drafts = await readCommentDrafts();
+    const text = drafts[key];
+    if (text) {
+      editor.innerText = text;
+      editor.dataset.betterDraftRestored = "true";
+    }
+  }
+
+  function bindCommentDraftEvents() {
+    let draftSaveTimer = 0;
+    document.addEventListener("input", (event) => {
+      const editor = event.target instanceof Element
+        ? event.target.closest(".better-comment-preview__reply-input")
+        : null;
+      if (!editor) {
+        return;
+      }
+      const form = editor.closest(".better-comment-preview__reply-form");
+      const preview = form?.closest("[data-link-id]");
+      if (!form || !preview) {
+        return;
+      }
+      window.clearTimeout(draftSaveTimer);
+      draftSaveTimer = window.setTimeout(() => {
+        saveCommentDraft(preview, form, getCommentDraftText(editor));
+      }, 500);
+    });
+
+    const observer = new MutationObserver(() => {
+      window.clearTimeout(draftRestoreTimer);
+      draftRestoreTimer = window.setTimeout(() => {
+        document.querySelectorAll(".better-comment-preview__reply-form").forEach((form) => {
+          const preview = form.closest("[data-link-id]");
+          if (preview) {
+            restoreCommentDraftForForm(preview, form);
+          }
+        });
+      }, 200);
+    });
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  let draftRestoreTimer = 0;
+  // END src\content\comment-draft.js
   // BEGIN src\content\settings-state.js
 // 设置面板状态、关键词和 AI 连接状态。
 // 本文件由上一级模块继续等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
@@ -15126,6 +15553,12 @@
           </label>
         </div>
       </div>
+      <div class="better-settings__section better-settings__highlight-section">
+        <div class="better-settings__section-title">关键词高亮</div>
+        <div class="better-settings__desc">信息流标题和评论正文命中关键词时自动高亮；多个关键词可用逗号、空格或换行分隔。</div>
+        <textarea class="better-settings__textarea better-settings__highlight-keywords" placeholder="例如：折扣 攻略 避雷">${escapeHtml(highlightKeywords.join("\n"))}</textarea>
+      </div>
+      ${renderReadLaterSettingsContent()}
       ${renderThemeSettingsContent()}
       <!-- 推广位（已隐藏）：插件沟通群 + 开源项目。如需恢复显示，将下方注释块取消注释。 -->
       <!--
@@ -15193,6 +15626,7 @@
       bindFeedLayoutRangeInputs(panel);
       bindThemeSettings(panel);
       mountAccountBar(panel);
+      refreshReadLaterList(panel);
       readMentionNotifySettingsFromStorage().then((settings) => {
         const toggle = panel.querySelector(".better-settings__mention-notify-toggle");
         if (toggle) {
@@ -16003,6 +16437,24 @@
         return;
       }
 
+      const readLaterExportButton = event.target.closest(".better-settings__read-later-export");
+      if (readLaterExportButton && panel.contains(readLaterExportButton)) {
+        readReadLaterItems().then((items) => exportReadLaterMarkdown(items));
+        return;
+      }
+
+      const readLaterClearButton = event.target.closest(".better-settings__read-later-clear");
+      if (readLaterClearButton && panel.contains(readLaterClearButton)) {
+        writeReadLaterItems([]).then(() => refreshReadLaterList(panel));
+        return;
+      }
+
+      const readLaterRemoveButton = event.target.closest("[data-read-later-remove]");
+      if (readLaterRemoveButton && panel.contains(readLaterRemoveButton)) {
+        removeReadLaterItem(readLaterRemoveButton.dataset.readLaterRemove).then(() => refreshReadLaterList(panel));
+        return;
+      }
+
       const mentionNotifyToggleButton = event.target.closest(".better-settings__mention-notify-toggle");
       if (mentionNotifyToggleButton && panel.contains(mentionNotifyToggleButton)) {
         const nextEnabled = !mentionNotifySettings.enabled;
@@ -16265,6 +16717,16 @@
 
       if (event.target.matches(".better-settings__ai-enabled, .better-settings__ai-allow-emoji, .better-settings__ai-auto-popup")) {
         saveAiSettingsFromPanel(panel);
+        return;
+      }
+
+      if (event.target.matches(".better-settings__highlight-keywords")) {
+        highlightKeywords = normalizeKeywordList(event.target.value);
+        saveLocalSettings({
+          [HIGHLIGHT_KEYWORDS_STORAGE_KEY]: highlightKeywords
+        });
+        resetKeywordHighlights();
+        scanKeywordHighlights();
         return;
       }
 
@@ -17763,6 +18225,37 @@
   // BEGIN src\content\link-page.js
 // 帖子详情页评论过滤、排序和详情页 AI 总结入口。
 // 本文件由原入口文件等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
+  let linkPageOnlyOwner = false;
+
+  function getLinkPageOwnerUsername() {
+    const linkId = getCurrentLinkId();
+    const state = commentCache.get(linkId);
+    const groups = Array.isArray(state?.commentGroups) ? state.commentGroups : [];
+    for (const group of groups) {
+      const candidates = [group?.root, ...(Array.isArray(group?.replies) ? group.replies : [])];
+      for (const comment of candidates) {
+        if (comment?.is_link_owner === 1 || comment?.is_link_owner === true) {
+          return getUserDisplayName(comment.user);
+        }
+      }
+    }
+    const detailUser = state?.linkDetail?.user || state?.linkDetail?.author;
+    return getUserDisplayName(detailUser) || "";
+  }
+
+  function isLinkPageCommentFromOwner(item) {
+    if (!linkPageOnlyOwner) {
+      return true;
+    }
+    const ownerName = getLinkPageOwnerUsername();
+    if (!ownerName) {
+      return true;
+    }
+    const usernameEl = item.querySelector('.info-box__username, .children-item__comment-creator');
+    const username = usernameEl?.textContent?.trim() || '';
+    return username === ownerName;
+  }
+
   function filterLinkPageComments() {
     if (!isLinkPage()) {
       return 0;
@@ -17789,8 +18282,9 @@
       const isTopLevelCy = topLevelContentEl?.classList.contains('cy') || topLevelUsername.toLowerCase().includes('cy');
       const isTopLevelBlocked = isBlockedByKeyword({ text: topLevelContentText, user: { username: topLevelUsername } });
       const isTopLevelBlockedByLevel = shouldHideByLevel(topLevelUserLevel, BLOCKED_KEYWORD_SCOPES.COMMENT);
+      const isTopLevelNotOwner = !isLinkPageCommentFromOwner(topLevelItem);
 
-      if ((hideCyComments && isTopLevelCy) || isTopLevelBlocked || isTopLevelBlockedByLevel) {
+      if ((hideCyComments && isTopLevelCy) || isTopLevelBlocked || isTopLevelBlockedByLevel || isTopLevelNotOwner) {
         topLevelItem.style.display = 'none';
         hiddenCount++; // Count the hidden top-level comment
       } else {
@@ -17805,8 +18299,9 @@
           const isReplyCy = replyContentEl?.classList.contains('cy') || replyUsername.toLowerCase().includes('cy');
           const isReplyBlocked = isBlockedByKeyword({ text: replyContentText, user: { username: replyUsername } });
           const isReplyBlockedByLevel = shouldHideByLevel(replyUserLevel, BLOCKED_KEYWORD_SCOPES.COMMENT);
+          const isReplyNotOwner = !isLinkPageCommentFromOwner(replyItem);
 
-          if ((hideCyComments && isReplyCy) || isReplyBlocked || isReplyBlockedByLevel) {
+          if ((hideCyComments && isReplyCy) || isReplyBlocked || isReplyBlockedByLevel || isReplyNotOwner) {
             replyItem.style.display = 'none';
             hiddenCount++; // Count each hidden reply
           }
@@ -18033,7 +18528,20 @@
       countSpan.className = 'better-comment-preview__filtered-count';
 
       toggleButton.append(switchSpan, labelSpan);
-      toolbar.append(sortControls, toggleButton, countSpan);
+
+      const ownerButton = document.createElement('button');
+      ownerButton.className = 'better-comment-preview__owner-toggle';
+      ownerButton.type = 'button';
+      ownerButton.textContent = '只看楼主';
+      ownerButton.setAttribute('aria-pressed', linkPageOnlyOwner ? 'true' : 'false');
+      ownerButton.addEventListener('click', () => {
+        linkPageOnlyOwner = !linkPageOnlyOwner;
+        ownerButton.setAttribute('aria-pressed', linkPageOnlyOwner ? 'true' : 'false');
+        ownerButton.classList.toggle('is-active', linkPageOnlyOwner);
+        scheduleLinkPageFilterRefresh();
+      });
+
+      toolbar.append(sortControls, toggleButton, ownerButton, countSpan);
 
       toggleButton.addEventListener('click', () => {
         setHideCyComments(!hideCyComments);
@@ -18569,6 +19077,8 @@
   async function start() {
     initTheme();
     readMentionNotifySettingsFromStorage();
+    applyKeywordHighlightsAndObserve();
+    bindCommentDraftEvents();
     installHomeFeedFocusRefreshGuard();
     installApiParamCapture();
     captureExistingApiEntries();

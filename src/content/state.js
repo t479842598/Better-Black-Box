@@ -162,6 +162,7 @@
   let activeSettingsTab = SETTINGS_TABS.GENERAL;
   let hotSearchPromise = null;
   let hotSearchDisabled = false;
+  let highlightKeywords = [];
   let leftMenuOriginalPosition = null;
   let emojiPromise = null;
   let scheduled = false;
@@ -892,6 +893,7 @@
     emojiUsageStats = normalizeEmojiUsageStats(values[COMMENT_EMOJI_USAGE_STORAGE_KEY]);
     feedLayoutSettings = normalizeFeedLayoutSettings(values[FEED_LAYOUT_SETTINGS_STORAGE_KEY]);
     hotSearchDisabled = values[HOT_SEARCH_DISABLED_STORAGE_KEY] === true;
+    highlightKeywords = normalizeKeywordList(values[HIGHLIGHT_KEYWORDS_STORAGE_KEY]);
     applyFeedLayoutSettings();
   }
 
