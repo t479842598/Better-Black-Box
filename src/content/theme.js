@@ -36,19 +36,22 @@
   }
 
   function readStoredTheme() {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(THEME_STORAGE_KEY, (result) => {
-        currentTheme = normalizeTheme(result?.[THEME_STORAGE_KEY]);
-        resolve(currentTheme);
-      });
+    return requestLocalSettingsState().then((response) => {
+      if (!response?.ok) {
+        currentTheme = "auto";
+        return currentTheme;
+      }
+      currentTheme = normalizeTheme(response.values?.[THEME_STORAGE_KEY]);
+      return currentTheme;
     });
   }
 
   function saveTheme(theme) {
     currentTheme = normalizeTheme(theme);
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [THEME_STORAGE_KEY]: currentTheme }, resolve);
+    saveLocalSettings({
+      [THEME_STORAGE_KEY]: currentTheme
     });
+    return Promise.resolve(currentTheme);
   }
 
   function initTheme() {

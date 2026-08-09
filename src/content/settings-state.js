@@ -275,17 +275,18 @@
   let mentionNotifySettings = normalizeMentionNotifySettings();
 
   function readMentionNotifySettingsFromStorage() {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(MENTION_NOTIFY_STORAGE_KEY, (result) => {
-        mentionNotifySettings = normalizeMentionNotifySettings(result?.[MENTION_NOTIFY_STORAGE_KEY]);
-        resolve(mentionNotifySettings);
-      });
+    return requestLocalSettingsState().then((response) => {
+      mentionNotifySettings = normalizeMentionNotifySettings(
+        response?.ok ? response.values?.[MENTION_NOTIFY_STORAGE_KEY] : null
+      );
+      return mentionNotifySettings;
     });
   }
 
   function saveMentionNotifySettings(settings) {
     mentionNotifySettings = normalizeMentionNotifySettings(settings);
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [MENTION_NOTIFY_STORAGE_KEY]: mentionNotifySettings }, resolve);
+    saveLocalSettings({
+      [MENTION_NOTIFY_STORAGE_KEY]: mentionNotifySettings
     });
+    return Promise.resolve(mentionNotifySettings);
   }

@@ -4,15 +4,12 @@
   const ACCOUNT_PROFILE_REFRESH_MS = 30 * 1000;
 
   function getCachedAccountProfile() {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(ACCOUNT_PROFILE_STORAGE_KEY, (result) => {
-        const cached = result?.[ACCOUNT_PROFILE_STORAGE_KEY];
-        if (!cached || !cached.cachedAt) {
-          resolve(null);
-          return;
-        }
-        resolve(cached);
-      });
+    return requestLocalSettingsState().then((response) => {
+      const cached = response?.ok ? response.values?.[ACCOUNT_PROFILE_STORAGE_KEY] : null;
+      if (!cached || !cached.cachedAt) {
+        return null;
+      }
+      return cached;
     });
   }
 
@@ -63,7 +60,9 @@
         ...profile,
         cachedAt: Date.now()
       };
-      chrome.storage.local.set({ [ACCOUNT_PROFILE_STORAGE_KEY]: saved });
+      saveLocalSettings({
+        [ACCOUNT_PROFILE_STORAGE_KEY]: saved
+      });
       return saved;
     } catch (error) {
       const cached = await getCachedAccountProfile();

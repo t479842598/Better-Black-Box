@@ -10,17 +10,17 @@
   }
 
   function readCommentDrafts() {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(COMMENT_DRAFT_STORAGE_KEY, (result) => {
-        resolve(result?.[COMMENT_DRAFT_STORAGE_KEY] || {});
-      });
+    return requestLocalSettingsState().then((response) => {
+      const drafts = response?.ok ? response.values?.[COMMENT_DRAFT_STORAGE_KEY] : null;
+      return drafts && typeof drafts === "object" ? drafts : {};
     });
   }
 
   function writeCommentDrafts(drafts) {
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [COMMENT_DRAFT_STORAGE_KEY]: drafts }, resolve);
+    saveLocalSettings({
+      [COMMENT_DRAFT_STORAGE_KEY]: drafts
     });
+    return Promise.resolve();
   }
 
   async function saveCommentDraft(preview, form, text) {

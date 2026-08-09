@@ -11,20 +11,19 @@
   }
 
   function readReadLaterItems() {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(READ_LATER_STORAGE_KEY, (result) => {
-        const items = Array.isArray(result?.[READ_LATER_STORAGE_KEY])
-          ? result[READ_LATER_STORAGE_KEY].map(normalizeReadLaterItem).filter((item) => item.linkId)
-          : [];
-        resolve(items);
-      });
+    return requestLocalSettingsState().then((response) => {
+      const items = response?.ok ? response.values?.[READ_LATER_STORAGE_KEY] : null;
+      return Array.isArray(items)
+        ? items.map(normalizeReadLaterItem).filter((item) => item.linkId)
+        : [];
     });
   }
 
   function writeReadLaterItems(items) {
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [READ_LATER_STORAGE_KEY]: items.slice(0, READ_LATER_MAX_ITEMS) }, resolve);
+    saveLocalSettings({
+      [READ_LATER_STORAGE_KEY]: items.slice(0, READ_LATER_MAX_ITEMS)
     });
+    return Promise.resolve();
   }
 
   async function isInReadLater(linkId) {

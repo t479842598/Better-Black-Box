@@ -53,7 +53,10 @@
     HOT_SEARCH_DISABLED_STORAGE_KEY,
     ACCOUNT_PROFILE_STORAGE_KEY,
     THEME_STORAGE_KEY,
-    HIGHLIGHT_KEYWORDS_STORAGE_KEY
+    HIGHLIGHT_KEYWORDS_STORAGE_KEY,
+    COMMENT_DRAFT_STORAGE_KEY,
+    READ_LATER_STORAGE_KEY,
+    MENTION_NOTIFY_STORAGE_KEY
   ];
 
   const LOCAL_SETTINGS_REQUEST_EVENT = "better-xiaoheihe-local-settings-request";
@@ -13816,20 +13819,19 @@
   }
 
   function readReadLaterItems() {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(READ_LATER_STORAGE_KEY, (result) => {
-        const items = Array.isArray(result?.[READ_LATER_STORAGE_KEY])
-          ? result[READ_LATER_STORAGE_KEY].map(normalizeReadLaterItem).filter((item) => item.linkId)
-          : [];
-        resolve(items);
-      });
+    return requestLocalSettingsState().then((response) => {
+      const items = response?.ok ? response.values?.[READ_LATER_STORAGE_KEY] : null;
+      return Array.isArray(items)
+        ? items.map(normalizeReadLaterItem).filter((item) => item.linkId)
+        : [];
     });
   }
 
   function writeReadLaterItems(items) {
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [READ_LATER_STORAGE_KEY]: items.slice(0, READ_LATER_MAX_ITEMS) }, resolve);
+    saveLocalSettings({
+      [READ_LATER_STORAGE_KEY]: items.slice(0, READ_LATER_MAX_ITEMS)
     });
+    return Promise.resolve();
   }
 
   async function isInReadLater(linkId) {
@@ -13969,17 +13971,17 @@
   }
 
   function readCommentDrafts() {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(COMMENT_DRAFT_STORAGE_KEY, (result) => {
-        resolve(result?.[COMMENT_DRAFT_STORAGE_KEY] || {});
-      });
+    return requestLocalSettingsState().then((response) => {
+      const drafts = response?.ok ? response.values?.[COMMENT_DRAFT_STORAGE_KEY] : null;
+      return drafts && typeof drafts === "object" ? drafts : {};
     });
   }
 
   function writeCommentDrafts(drafts) {
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [COMMENT_DRAFT_STORAGE_KEY]: drafts }, resolve);
+    saveLocalSettings({
+      [COMMENT_DRAFT_STORAGE_KEY]: drafts
     });
+    return Promise.resolve();
   }
 
   async function saveCommentDraft(preview, form, text) {
@@ -14342,19 +14344,20 @@
   let mentionNotifySettings = normalizeMentionNotifySettings();
 
   function readMentionNotifySettingsFromStorage() {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(MENTION_NOTIFY_STORAGE_KEY, (result) => {
-        mentionNotifySettings = normalizeMentionNotifySettings(result?.[MENTION_NOTIFY_STORAGE_KEY]);
-        resolve(mentionNotifySettings);
-      });
+    return requestLocalSettingsState().then((response) => {
+      mentionNotifySettings = normalizeMentionNotifySettings(
+        response?.ok ? response.values?.[MENTION_NOTIFY_STORAGE_KEY] : null
+      );
+      return mentionNotifySettings;
     });
   }
 
   function saveMentionNotifySettings(settings) {
     mentionNotifySettings = normalizeMentionNotifySettings(settings);
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [MENTION_NOTIFY_STORAGE_KEY]: mentionNotifySettings }, resolve);
+    saveLocalSettings({
+      [MENTION_NOTIFY_STORAGE_KEY]: mentionNotifySettings
     });
+    return Promise.resolve(mentionNotifySettings);
   }
   // END src\content\settings-state.js
   // BEGIN src\content\settings-renderers.js
@@ -14831,19 +14834,22 @@
   }
 
   function readStoredTheme() {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(THEME_STORAGE_KEY, (result) => {
-        currentTheme = normalizeTheme(result?.[THEME_STORAGE_KEY]);
-        resolve(currentTheme);
-      });
+    return requestLocalSettingsState().then((response) => {
+      if (!response?.ok) {
+        currentTheme = "auto";
+        return currentTheme;
+      }
+      currentTheme = normalizeTheme(response.values?.[THEME_STORAGE_KEY]);
+      return currentTheme;
     });
   }
 
   function saveTheme(theme) {
     currentTheme = normalizeTheme(theme);
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [THEME_STORAGE_KEY]: currentTheme }, resolve);
+    saveLocalSettings({
+      [THEME_STORAGE_KEY]: currentTheme
     });
+    return Promise.resolve(currentTheme);
   }
 
   function initTheme() {
@@ -14901,15 +14907,12 @@
   const ACCOUNT_PROFILE_REFRESH_MS = 30 * 1000;
 
   function getCachedAccountProfile() {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(ACCOUNT_PROFILE_STORAGE_KEY, (result) => {
-        const cached = result?.[ACCOUNT_PROFILE_STORAGE_KEY];
-        if (!cached || !cached.cachedAt) {
-          resolve(null);
-          return;
-        }
-        resolve(cached);
-      });
+    return requestLocalSettingsState().then((response) => {
+      const cached = response?.ok ? response.values?.[ACCOUNT_PROFILE_STORAGE_KEY] : null;
+      if (!cached || !cached.cachedAt) {
+        return null;
+      }
+      return cached;
     });
   }
 
@@ -14960,7 +14963,9 @@
         ...profile,
         cachedAt: Date.now()
       };
-      chrome.storage.local.set({ [ACCOUNT_PROFILE_STORAGE_KEY]: saved });
+      saveLocalSettings({
+        [ACCOUNT_PROFILE_STORAGE_KEY]: saved
+      });
       return saved;
     } catch (error) {
       const cached = await getCachedAccountProfile();
