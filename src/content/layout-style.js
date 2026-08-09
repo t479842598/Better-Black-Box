@@ -6009,20 +6009,18 @@
       }
       html[data-better-theme="dark"] {
         filter: invert(1) hue-rotate(180deg);
-        background-color: #1a1a1a;
+        /* 注意：此背景色会被 invert 反转，#e5e5e5 反转后 ≈ #1a1a1a（暗色） */
+        background-color: #e5e5e5;
       }
       html[data-better-theme="dark"] img,
       html[data-better-theme="dark"] video,
       html[data-better-theme="dark"] canvas,
       html[data-better-theme="dark"] picture,
-      html[data-better-theme="dark"] [class*="avatar"],
-      html[data-better-theme="dark"] [class*="emoji"],
-      html[data-better-theme="dark"] [class*="sticker"],
-      html[data-better-theme="dark"] [class*="medal"] {
+      html[data-better-theme="dark"] [class*="avatar"] img,
+      html[data-better-theme="dark"] [class*="emoji"] img,
+      html[data-better-theme="dark"] [class*="sticker"] img,
+      html[data-better-theme="dark"] [class*="medal"] img {
         filter: invert(1) hue-rotate(180deg) !important;
-      }
-      html[data-better-theme="dark"] [class*="emoji"] img {
-        filter: none !important;
       }
 
       /* ===== 设置面板账号信息栏 ===== */
@@ -6295,6 +6293,51 @@
       .${HOME_LAYOUT_CLASS} .better-read-later-btn.is-saved {
         border-color: #ff9d00;
         color: #ff8a00;
+      }
+
+      /* ===== 通用设置：更多设置折叠区 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__extra-section {
+        margin-top: 10px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__extra-section > .better-settings__collapsible-summary {
+        cursor: pointer;
+        list-style: none;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__extra-section > .better-settings__collapsible-summary::-webkit-details-marker {
+        display: none;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__extra-body {
+        margin-top: 8px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__extra-section .better-settings__collapsible-indicator {
+        margin-left: auto;
+      }
+
+      /* ===== Tab 布局：间距与自动换行 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__tab {
+        flex: 0 1 auto;
+        min-width: 60px;
+        justify-content: center;
+      }
+
+      /* ===== 账号栏紧凑布局（仅头像+名称） ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-bar {
+        padding: 8px 12px;
+        margin: 0 0 10px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-avatar {
+        width: 32px;
+        height: 32px;
+        flex-basis: 32px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-name {
+        font-size: 13px;
       }
 
     `;

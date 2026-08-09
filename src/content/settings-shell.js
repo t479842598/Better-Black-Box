@@ -85,6 +85,12 @@
         </div>
         <button class="better-settings__text-button better-settings__layout-reset" type="button">恢复默认值</button>
       </div>
+      <details class="better-settings__section better-settings__collapsible-section better-settings__extra-section">
+        <summary class="better-settings__collapsible-summary">
+          <span class="better-settings__section-title">更多设置</span>
+          <span class="better-settings__collapsible-indicator" aria-hidden="true"></span>
+        </summary>
+        <div class="better-settings__extra-body">
       <div class="better-settings__section better-settings__hot-search-section">
         <div class="better-settings__hot-search-row">
           <div class="better-settings__hot-search-copy">
@@ -120,6 +126,9 @@
       </div>
       ${renderReadLaterSettingsContent()}
       ${renderThemeSettingsContent()}
+        </div>
+      </details>
+
       <!-- 推广位（已隐藏）：插件沟通群 + 开源项目。如需恢复显示，将下方注释块取消注释。 -->
       <!--
       <div class="better-settings__external-links">

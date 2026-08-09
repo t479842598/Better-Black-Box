@@ -144,12 +144,14 @@
     const meta = bar.querySelector("[data-account-meta]");
     const medalsRow = bar.querySelector("[data-account-medals]");
 
+    // 当前 profile 接口在登录态可返回 username/avatar，但 level/exp/medals 字段不稳定。
+    // 按需求：其他信息解析不出来时隐藏，只保留头像和名称。
     if (!profile.username && !profile.heyboxId) {
       link.href = "#";
       avatar.textContent = "";
       avatar.classList.add("is-empty");
       name.textContent = "未登录小黑盒";
-      meta.textContent = "";
+      meta.innerHTML = "";
       medalsRow.innerHTML = "";
       return;
     }
@@ -169,8 +171,10 @@
     }
     avatar.classList.toggle("is-empty", !profile.avatar);
     name.textContent = profile.username || "小黑盒用户";
-    meta.innerHTML = renderAccountProgress(profile);
-    medalsRow.innerHTML = renderAccountMedals(profile);
+    // 仅在能稳定解析出等级/经验时才展示，否则隐藏
+    const hasProgress = profile.level > 0 || profile.exp > 0;
+    meta.innerHTML = hasProgress ? renderAccountProgress(profile) : "";
+    medalsRow.innerHTML = profile.medals.length ? renderAccountMedals(profile) : "";
   }
 
   async function mountAccountBar(panel) {
