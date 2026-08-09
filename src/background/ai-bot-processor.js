@@ -429,7 +429,22 @@
     const strategy = settings.feedSelectStrategy || "first";
     await appendAiBotLog("info", "开始查询首页推荐帖", { reason, strategy });
     const feedLinks = await fetchHomeFeedLinks(heyboxId);
-    const selected = selectFeedItemByStrategy(feedLinks, strategy);
+    // 智能挑帖：先过滤掉标题/正文命中拒绝回复关键词的帖子
+    const filteredFeedLinks = settings.rejectedReplyKeywords.length
+      ? feedLinks.filter((link) => {
+          const detail = getFeedItemDetail(link);
+          const feedText = `${detail.title || ""} ${detail.description || ""}`.toLowerCase();
+          return !settings.rejectedReplyKeywords.some((keyword) => feedText.includes(keyword.toLowerCase()));
+        })
+      : feedLinks;
+    if (filteredFeedLinks.length !== feedLinks.length) {
+      await appendAiBotLog("info", `首页推荐帖过滤掉 ${feedLinks.length - filteredFeedLinks.length} 条命中拒绝关键词的帖子`, {
+        reason,
+        total: feedLinks.length,
+        kept: filteredFeedLinks.length
+      });
+    }
+    const selected = selectFeedItemByStrategy(filteredFeedLinks, strategy);
     if (!selected) {
       await appendAiBotLog("warn", "首页推荐帖查询无有效帖子", {
         reason,

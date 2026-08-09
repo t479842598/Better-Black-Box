@@ -6262,6 +6262,21 @@
         font-weight: 600;
       }
 
+      /* ===== 收藏弹层导出按钮 ===== */
+      .${HOME_LAYOUT_CLASS} .better-favorite-popover__export {
+        margin-left: 8px;
+        padding: 3px 10px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .${HOME_LAYOUT_CLASS} .better-favorite-popover__export:hover {
+        background: rgba(0, 0, 0, 0.05);
+      }
+
     `;
     document.documentElement.appendChild(style);
   }

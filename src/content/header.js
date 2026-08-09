@@ -72,6 +72,7 @@
           查看全部
           <span aria-hidden="true">›</span>
         </a>
+        <button class="better-favorite-popover__export" type="button" data-export-favourites title="导出全部收藏为 Markdown">导出</button>
       </div>
       <div class="better-message-popover__body">
         <div class="better-message-popover__state">点击刷新查看收藏</div>
@@ -227,6 +228,14 @@
   function activateHeaderPopoverInteraction(event) {
     if (!(event.target instanceof Element)) {
       return false;
+    }
+
+    const exportFavouritesButton = event.target.closest("[data-export-favourites]");
+    if (exportFavouritesButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      exportFavouritePostsMarkdown().catch(() => {});
+      return true;
     }
 
     const profileTarget = event.target.closest("[data-better-profile-id]");
@@ -442,6 +451,51 @@
         hasMore: Array.isArray(rawItems) && rawItems.length >= limit
       };
     });
+  }
+
+  async function exportFavouritePostsMarkdown() {
+    const allItems = [];
+    let offset = 0;
+    const limit = 50;
+    for (let page = 0; page < 40; page += 1) {
+      const result = await fetchFavouritePosts({ offset, limit });
+      allItems.push(...result.items);
+      if (!result.hasMore) {
+        break;
+      }
+      offset += limit;
+    }
+    const lines = [
+      "# 小黑盒收藏",
+      "",
+      `共 ${allItems.length} 条 · 导出时间 ${new Date().toLocaleString("zh-CN", { hour12: false })}`,
+      ""
+    ];
+    allItems.forEach((item, index) => {
+      const title = getFavouritePostTitle(item) || getFavouritePostLinkId(item);
+      const url = `https://www.xiaoheihe.cn/app/bbs/link/${getFavouritePostLinkId(item)}`;
+      const author = getFavouritePostAuthor(item);
+      lines.push(`${index + 1}. [${title}](${url})${author ? ` — ${author}` : ""}`);
+    });
+    const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = `better-xiaoheihe-favourites-${new Date().toISOString().slice(0, 10)}.md`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 5000);
+  }
+
+  function getFavouritePostTitle(item) {
+    return String(
+      item?.title
+      || item?.link?.title
+      || item?.description
+      || item?.link?.description
+      || ""
+    ).trim().slice(0, 200);
   }
 
   function fetchAndRenderFavouritePosts(options = {}) {
