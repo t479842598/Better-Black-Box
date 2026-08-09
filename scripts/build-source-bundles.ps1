@@ -88,6 +88,7 @@ Join-SourceBundle `
     "src\background\ai-bot-queue.js",
     "src\background\ai-bot-processor.js",
     "src\background\ai-bot-runtime.js",
+    "src\background\mention-notify.js",
     "src\background\dnr-rules.js",
     "src\background\runtime.js"
   )

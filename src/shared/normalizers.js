@@ -60,6 +60,7 @@
       feedPollMinutes: Math.max(AI_BOT_MIN_FEED_POLL_MINUTES, Number.parseInt(settings?.feedPollMinutes, 10) || AI_BOT_MIN_FEED_POLL_MINUTES),
       messageFreshMinutes: Math.max(1, Number.parseInt(settings?.messageFreshMinutes, 10) || 5),
       replyLimitPerLinkUser: Math.max(1, Number.parseInt(settings?.replyLimitPerLinkUser, 10) || AI_BOT_DEFAULT_REPLY_LIMIT_PER_LINK_USER),
+      dailyReplyLimit: Math.max(0, Number.parseInt(settings?.dailyReplyLimit, 10) || 0),
       globalHistoryEnabled: settings?.globalHistoryEnabled !== false,
       globalHistoryLimit: Math.min(
         AI_BOT_MAX_GLOBAL_HISTORY_LIMIT,

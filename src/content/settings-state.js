@@ -263,3 +263,29 @@
     `).join("");
   }
 
+
+  // ===== @消息通知设置（content 侧状态） =====
+  function normalizeMentionNotifySettings(settings = {}) {
+    return {
+      enabled: settings?.enabled === true,
+      intervalMinutes: Math.max(5, Number.parseInt(settings?.intervalMinutes, 10) || 10)
+    };
+  }
+
+  let mentionNotifySettings = normalizeMentionNotifySettings();
+
+  function readMentionNotifySettingsFromStorage() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(MENTION_NOTIFY_STORAGE_KEY, (result) => {
+        mentionNotifySettings = normalizeMentionNotifySettings(result?.[MENTION_NOTIFY_STORAGE_KEY]);
+        resolve(mentionNotifySettings);
+      });
+    });
+  }
+
+  function saveMentionNotifySettings(settings) {
+    mentionNotifySettings = normalizeMentionNotifySettings(settings);
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [MENTION_NOTIFY_STORAGE_KEY]: mentionNotifySettings }, resolve);
+    });
+  }

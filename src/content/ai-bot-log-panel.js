@@ -241,6 +241,9 @@
 
   function renderAiBotTodayStatsHtml() {
     const stats = getAiBotTodayStats();
+    const overall = getAiBotOverallStats();
+    const days = getAiBotRecent7Days();
+    const maxDayCount = Math.max(1, ...days.map((day) => day.count));
     return `
       <div class="better-settings__ai-bot-stats" data-ai-bot-today-stats>
         <div class="better-settings__ai-bot-stat">
@@ -254,6 +257,30 @@
         <div class="better-settings__ai-bot-stat">
           <span class="better-settings__ai-bot-stat-label">今天回复 @</span>
           <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.mentionReplies)}</span>
+        </div>
+        <div class="better-settings__ai-bot-stat">
+          <span class="better-settings__ai-bot-stat-label">累计回复</span>
+          <span class="better-settings__ai-bot-stat-value">${escapeHtml(overall.total)}</span>
+        </div>
+        <div class="better-settings__ai-bot-stat">
+          <span class="better-settings__ai-bot-stat-label">累计帖子评论</span>
+          <span class="better-settings__ai-bot-stat-value">${escapeHtml(overall.feed)}</span>
+        </div>
+        <div class="better-settings__ai-bot-stat">
+          <span class="better-settings__ai-bot-stat-label">发送失败</span>
+          <span class="better-settings__ai-bot-stat-value${overall.failed > 0 ? " is-warn" : ""}">${escapeHtml(overall.failed)}</span>
+        </div>
+      </div>
+      <div class="better-settings__ai-bot-week" data-ai-bot-week-chart>
+        <div class="better-settings__ai-bot-week-title">最近 7 天回复分布</div>
+        <div class="better-settings__ai-bot-week-bars">
+          ${days.map((day) => `
+            <div class="better-settings__ai-bot-week-col" title="${escapeHtml(day.label)}：${escapeHtml(day.count)} 条">
+              <span class="better-settings__ai-bot-week-bar" style="height: ${Math.max(4, Math.round((day.count / maxDayCount) * 100))}%"></span>
+              <span class="better-settings__ai-bot-week-count">${escapeHtml(day.count)}</span>
+              <span class="better-settings__ai-bot-week-label">${escapeHtml(day.label)}</span>
+            </div>
+          `).join("")}
         </div>
       </div>
     `;

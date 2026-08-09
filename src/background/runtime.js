@@ -2,10 +2,13 @@
 // 本文件由原入口文件等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
   chrome.runtime.onInstalled?.addListener(() => {
     syncAiBotAlarm({ reset: true });
+    syncMentionNotifyAlarm({ reset: true });
+    bindMentionNotifyNotificationActions();
   });
 
   chrome.runtime.onStartup?.addListener(() => {
     syncAiBotAlarm();
+    syncMentionNotifyAlarm();
   });
 
   chrome.alarms?.onAlarm?.addListener((alarm) => {
@@ -17,6 +20,9 @@
     }
     if (alarm?.name === AI_BOT_QUEUE_ALARM_NAME) {
       runAiBotQueueConsumer().catch(() => {});
+    }
+    if (alarm?.name === MENTION_NOTIFY_ALARM_NAME) {
+      runMentionNotifyCheck().catch(() => {});
     }
   });
 
@@ -34,6 +40,9 @@
     }
     if (areaName === "local" && changes[API_PARAMS_STORAGE_KEY]) {
       cachedApiParams = normalizeCachedApiParams(changes[API_PARAMS_STORAGE_KEY].newValue);
+    }
+    if (areaName === "local" && changes[MENTION_NOTIFY_STORAGE_KEY]) {
+      syncMentionNotifyAlarm({ reset: true });
     }
   });
 

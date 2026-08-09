@@ -237,7 +237,11 @@
       Number(runtime.lastCommentAt || 0),
       Number(runtime.lastCommentAttemptAt || 0)
     );
-    const waitMs = Math.max(0, AI_BOT_COMMENT_COOLDOWN_MS - (Date.now() - lastCommentAt));
+    // 风控保护：基础冷却 + 随机抖动（0~30s）+ 连续失败降速（每失败 1 次 +60s）
+    const failures = Math.max(0, Number(runtime.consecutiveCommentFailures || 0));
+    const jitterMs = Math.floor(Math.random() * AI_BOT_COMMENT_COOLDOWN_MS);
+    const penaltyMs = failures * 2 * AI_BOT_COMMENT_COOLDOWN_MS;
+    const waitMs = Math.max(0, AI_BOT_COMMENT_COOLDOWN_MS + jitterMs + penaltyMs - (Date.now() - lastCommentAt));
     if (waitMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
@@ -348,6 +352,18 @@
     const latestSettings = await readAiBotSettings();
     if (!latestSettings.enabled) {
       throw new Error("AI Bot 已关闭");
+    }
+    // 风控保护：每日回复上限
+    if (latestSettings.dailyReplyLimit > 0) {
+      const todaySentCount = await getAiBotTodaySentCount();
+      if (todaySentCount >= latestSettings.dailyReplyLimit) {
+        throw new Error(`今日回复已达上限（${latestSettings.dailyReplyLimit} 条，已发 ${todaySentCount} 条）`);
+      }
+    }
+    // 风控保护：回复文本命中拒绝关键词时放弃发送
+    const matchedReplyKeyword = latestSettings.rejectedReplyKeywords.find((keyword) => text.includes(keyword));
+    if (matchedReplyKeyword) {
+      throw new Error(`回复内容命中拒绝关键词「${matchedReplyKeyword}」，已放弃发送`);
     }
     await waitForAiBotCommentCooldown();
     await markAiBotCommentAttempt();

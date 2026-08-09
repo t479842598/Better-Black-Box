@@ -478,6 +478,7 @@
 
   async function start() {
     initTheme();
+    readMentionNotifySettingsFromStorage();
     installHomeFeedFocusRefreshGuard();
     installApiParamCapture();
     captureExistingApiEntries();

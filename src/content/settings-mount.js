@@ -106,6 +106,18 @@
         return;
       }
 
+      const mentionNotifyToggleButton = event.target.closest(".better-settings__mention-notify-toggle");
+      if (mentionNotifyToggleButton && panel.contains(mentionNotifyToggleButton)) {
+        const nextEnabled = !mentionNotifySettings.enabled;
+        saveMentionNotifySettings({
+          ...mentionNotifySettings,
+          enabled: nextEnabled
+        }).then(() => {
+          renderSettingsPanel();
+        });
+        return;
+      }
+
       const resetAiBotPromptButton = event.target.closest(".better-settings__ai-bot-reset-prompt");
       if (resetAiBotPromptButton && panel.contains(resetAiBotPromptButton)) {
         const promptInput = panel.querySelector(".better-settings__ai-bot-comment-prompt");
@@ -337,7 +349,7 @@
         saveAiSettingsFromPanel(panel);
       }
 
-      if (event.target.matches(".better-settings__ai-bot-base-url, .better-settings__ai-bot-model, .better-settings__ai-bot-api-key, .better-settings__ai-bot-poll-minutes, .better-settings__ai-bot-feed-poll-minutes, .better-settings__ai-bot-fresh-minutes, .better-settings__ai-bot-reply-limit, .better-settings__ai-bot-history-limit, .better-settings__ai-bot-whitelist, .better-settings__ai-bot-rejected-keywords, .better-settings__ai-bot-comment-prompt, .better-settings__ai-bot-feed-comment-prompt")) {
+      if (event.target.matches(".better-settings__ai-bot-base-url, .better-settings__ai-bot-model, .better-settings__ai-bot-api-key, .better-settings__ai-bot-poll-minutes, .better-settings__ai-bot-feed-poll-minutes, .better-settings__ai-bot-fresh-minutes, .better-settings__ai-bot-reply-limit, .better-settings__ai-bot-daily-limit, .better-settings__ai-bot-history-limit, .better-settings__ai-bot-whitelist, .better-settings__ai-bot-rejected-keywords, .better-settings__ai-bot-comment-prompt, .better-settings__ai-bot-feed-comment-prompt")) {
         if (event.target.matches(".better-settings__ai-bot-whitelist, .better-settings__ai-bot-rejected-keywords, .better-settings__ai-bot-comment-prompt, .better-settings__ai-bot-feed-comment-prompt")) {
           syncAutoHeightTextarea(event.target);
           repositionSettingsPanelIfOpen();
@@ -359,11 +371,34 @@
         return;
       }
 
+      if (event.target.matches(".better-settings__mention-notify-interval")) {
+        const interval = Math.max(5, Number.parseInt(event.target.value, 10) || 10);
+        event.target.value = String(interval);
+        saveMentionNotifySettings({
+          ...mentionNotifySettings,
+          intervalMinutes: interval
+        });
+        return;
+      }
+
       if (event.target.matches(".better-settings__layout-total-range, .better-settings__layout-post-range")) {
         const isTotalWidth = event.target.matches(".better-settings__layout-total-range");
         updateFeedLayoutSetting(isTotalWidth
           ? { totalWidth: event.target.value }
           : { postWidth: event.target.value });
+        return;
+      }
+
+      if (event.target.matches(".better-settings__ai-bot-prompt-preset")) {
+        const preset = AI_BOT_PROMPT_PRESETS.find((item) => item.id === event.target.value);
+        if (preset) {
+          const promptInput = panel.querySelector(".better-settings__ai-bot-comment-prompt");
+          if (promptInput) {
+            promptInput.value = preset.prompt;
+            syncAutoHeightTextarea(promptInput);
+          }
+        }
+        event.target.value = "";
         return;
       }
 

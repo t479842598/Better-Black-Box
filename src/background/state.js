@@ -126,6 +126,24 @@
     return result[AI_BOT_CONSENT_STORAGE_KEY] === true;
   }
 
+  // 统计今天已成功发送的回复/评论条数（用于每日回复上限）
+  async function getAiBotTodaySentCount() {
+    const result = await storageGet(AI_BOT_MESSAGE_LOGS_STORAGE_KEY);
+    const logs = Array.isArray(result[AI_BOT_MESSAGE_LOGS_STORAGE_KEY])
+      ? result[AI_BOT_MESSAGE_LOGS_STORAGE_KEY]
+      : [];
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayStartMs = todayStart.getTime();
+    return logs.filter((log) => {
+      if (log?.skipped) {
+        return false;
+      }
+      const ts = Number(log?.sentTimestamp || log?.timestamp || 0);
+      return ts >= todayStartMs;
+    }).length;
+  }
+
   function notifyAiBotCommentFailures() {
     if (!chrome.notifications?.create) {
       return;

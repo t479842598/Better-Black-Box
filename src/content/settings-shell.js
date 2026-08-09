@@ -96,6 +96,23 @@
           </button>
         </div>
       </div>
+      <div class="better-settings__section better-settings__mention-notify-section">
+        <div class="better-settings__hot-search-row">
+          <div class="better-settings__hot-search-copy">
+            <div class="better-settings__section-title">@ 消息通知</div>
+            <div class="better-settings__desc">后台定期检查新的 @ 我的消息，并通过系统通知提醒。</div>
+          </div>
+          <button class="better-settings__mention-notify-toggle" type="button" role="switch" aria-checked="${mentionNotifySettings.enabled ? "true" : "false"}" aria-label="${mentionNotifySettings.enabled ? "关闭@消息通知" : "开启@消息通知"}" title="${mentionNotifySettings.enabled ? "关闭通知" : "开启通知"}">
+            <span class="better-settings__level-switch" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="better-settings__compact-number-grid"${mentionNotifySettings.enabled ? "" : " hidden"} data-mention-notify-options>
+          <label class="better-settings__field better-settings__field--compact-number">
+            <span class="better-settings__field-title">检查周期（分钟，最低5）</span>
+            <input class="better-settings__text-input better-settings__mention-notify-interval" type="number" min="5" step="1" value="${escapeHtml(mentionNotifySettings.intervalMinutes)}">
+          </label>
+        </div>
+      </div>
       ${renderThemeSettingsContent()}
       <!-- 推广位（已隐藏）：插件沟通群 + 开源项目。如需恢复显示，将下方注释块取消注释。 -->
       <!--
@@ -163,6 +180,18 @@
       bindFeedLayoutRangeInputs(panel);
       bindThemeSettings(panel);
       mountAccountBar(panel);
+      readMentionNotifySettingsFromStorage().then((settings) => {
+        const toggle = panel.querySelector(".better-settings__mention-notify-toggle");
+        if (toggle) {
+          toggle.setAttribute("aria-checked", settings.enabled ? "true" : "false");
+          toggle.setAttribute("aria-label", settings.enabled ? "关闭@消息通知" : "开启@消息通知");
+          toggle.setAttribute("title", settings.enabled ? "关闭通知" : "开启通知");
+        }
+        const options = panel.querySelector("[data-mention-notify-options]");
+        if (options) {
+          options.hidden = !settings.enabled;
+        }
+      });
     } else {
       clearAccountBarTimers(panel);
     }

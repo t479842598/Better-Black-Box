@@ -696,6 +696,59 @@
     };
   }
 
+  // AI Bot 全局统计：累计回复、按类型分布、最近 7 天每日分布、发送失败次数
+  function getAiBotOverallStats() {
+    const stats = {
+      total: 0,
+      feed: 0,
+      comment: 0,
+      mention: 0,
+      failed: 0,
+      byDay: {}
+    };
+    aiBotMessageLogs.forEach((log) => {
+      if (log?.skipped) {
+        return;
+      }
+      const sentTimestamp = Number(log?.sentTimestamp || log?.timestamp || 0);
+      if (!sentTimestamp) {
+        return;
+      }
+      stats.total += 1;
+      const source = log.messageSource === "feed"
+        ? "feed"
+        : (log.messageSource === "comment" ? "comment" : "mention");
+      stats[source] += 1;
+      const day = new Date(sentTimestamp);
+      const dayKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      stats.byDay[dayKey] = (stats.byDay[dayKey] || 0) + 1;
+    });
+    // 发送失败次数：统计运行日志中“自动评论发送失败”的 error 条目
+    aiBotLogs.forEach((log) => {
+      if (log?.level === "error" && /发送失败/.test(log?.message || "")) {
+        stats.failed += 1;
+      }
+    });
+    return stats;
+  }
+
+  function getAiBotRecent7Days() {
+    const stats = getAiBotOverallStats();
+    const days = [];
+    for (let i = 6; i >= 0; i -= 1) {
+      const day = new Date();
+      day.setDate(day.getDate() - i);
+      const dayKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      const label = `${day.getMonth() + 1}/${day.getDate()}`;
+      days.push({
+        key: dayKey,
+        label,
+        count: stats.byDay[dayKey] || 0
+      });
+    }
+    return days;
+  }
+
   function persistAiBotSettingsState() {
     saveLocalSettings({
       [AI_BOT_SETTINGS_STORAGE_KEY]: aiBotSettings

@@ -30,6 +30,8 @@
   const HOT_SEARCH_DISABLED_STORAGE_KEY = "better-xiaoheihe-hot-search-disabled";
   const ACCOUNT_PROFILE_STORAGE_KEY = "better-xiaoheihe-account-profile";
   const THEME_STORAGE_KEY = "better-xiaoheihe-theme";
+  const MENTION_NOTIFY_STORAGE_KEY = "better-xiaoheihe-mention-notify";
+  const MENTION_NOTIFY_ALARM_NAME = "better-xiaoheihe-mention-notify";
 
   const LOCAL_SETTINGS_STORAGE_KEYS = [
     HIDE_CY_COMMENTS_STORAGE_KEY,
@@ -75,6 +77,35 @@
   const DEFAULT_SUMMARY_PROMPT = "你是社区帖子总结助手，请用中文简洁输出：\n帖子总结\n一句话概括帖子核心内容。\n评论区信息\n提取评论区里有价值的观点、经验、补充或避坑信息，没有则跳过。\nAI简评\n像真实网友一样补充观点，避免AI味。\n返回md格式。";
   const AI_BOT_DEFAULT_PROMPT = "你是小黑盒社区自动回复助手。请根据消息类型、帖子正文、评论区上下文和触发消息的那条评论，生成一条自然、友好、简洁的中文回复。不要使用模板化开头，不要编造事实，不要输出Markdown。如果触发消息的评论内容只有表情（没有文字，表情数量可以是多个），那么你只回复一个表情，不要添加任何文字。";
   const AI_BOT_DEFAULT_FEED_PROMPT = "你是小黑盒社区暖贴助手。请根据帖子标题、正文和话题，生成一条自然、真实、简洁的中文评论，像普通用户浏览帖子后留下的感想。不要使用模板化开头，不要编造未提供的信息，不要输出Markdown。";
+
+  // AI 评论提示词预设（人设风格快捷填充，选择后写入 commentPrompt 可再编辑）
+  const AI_BOT_PROMPT_PRESETS = [
+    {
+      id: "default",
+      label: "默认助手",
+      prompt: AI_BOT_DEFAULT_PROMPT
+    },
+    {
+      id: "enthusiast",
+      label: "热心玩家",
+      prompt: "你是小黑盒社区热情的热心玩家。请根据消息类型、帖子正文、评论区上下文和触发消息的那条评论，生成一条活泼、热情、带点感叹和鼓励的中文回复，像一位乐于帮忙的老玩家。不要使用模板化开头，不要编造事实，不要输出Markdown。如果触发消息的评论内容只有表情（没有文字，表情数量可以是多个），那么你只回复一个表情，不要添加任何文字。"
+    },
+    {
+      id: "guide",
+      label: "攻略党",
+      prompt: "你是小黑盒社区资深的攻略型玩家。请根据消息类型、帖子正文、评论区上下文和触发消息的那条评论，生成一条专业、简洁、信息量足的中文回复，优先给出结论和关键建议，可以补充一两个实操要点。不要使用模板化开头，不要编造事实，不要输出Markdown。如果触发消息的评论内容只有表情（没有文字，表情数量可以是多个），那么你只回复一个表情，不要添加任何文字。"
+    },
+    {
+      id: "quiet",
+      label: "潜水低调",
+      prompt: "你是小黑盒社区低调的潜水玩家。请根据消息类型、帖子正文、评论区上下文和触发消息的那条评论，生成一条简短、随和、不抢戏的中文回复，一般一两句话即可，语气平淡自然。不要使用模板化开头，不要编造事实，不要输出Markdown。如果触发消息的评论内容只有表情（没有文字，表情数量可以是多个），那么你只回复一个表情，不要添加任何文字。"
+    },
+    {
+      id: "concise",
+      label: "极简惜字",
+      prompt: "你是小黑盒社区惜字如金的玩家。请根据消息类型、帖子正文、评论区上下文和触发消息的那条评论，生成一条极简的中文回复，最多不超过 15 个字，直击要点，不要寒暄客套。不要使用模板化开头，不要编造事实，不要输出Markdown。如果触发消息的评论内容只有表情（没有文字，表情数量可以是多个），那么你只回复一个表情，不要添加任何文字。"
+    }
+  ];
 
   const AI_PROVIDERS = {
     OPENAI_COMPATIBLE: "openai-compatible",
@@ -153,6 +184,7 @@
       feedPollMinutes: Math.max(AI_BOT_MIN_FEED_POLL_MINUTES, Number.parseInt(settings?.feedPollMinutes, 10) || AI_BOT_MIN_FEED_POLL_MINUTES),
       messageFreshMinutes: Math.max(1, Number.parseInt(settings?.messageFreshMinutes, 10) || 5),
       replyLimitPerLinkUser: Math.max(1, Number.parseInt(settings?.replyLimitPerLinkUser, 10) || AI_BOT_DEFAULT_REPLY_LIMIT_PER_LINK_USER),
+      dailyReplyLimit: Math.max(0, Number.parseInt(settings?.dailyReplyLimit, 10) || 0),
       globalHistoryEnabled: settings?.globalHistoryEnabled !== false,
       globalHistoryLimit: Math.min(
         AI_BOT_MAX_GLOBAL_HISTORY_LIMIT,
@@ -329,6 +361,24 @@
   async function hasAiBotConsent() {
     const result = await storageGet(AI_BOT_CONSENT_STORAGE_KEY);
     return result[AI_BOT_CONSENT_STORAGE_KEY] === true;
+  }
+
+  // 统计今天已成功发送的回复/评论条数（用于每日回复上限）
+  async function getAiBotTodaySentCount() {
+    const result = await storageGet(AI_BOT_MESSAGE_LOGS_STORAGE_KEY);
+    const logs = Array.isArray(result[AI_BOT_MESSAGE_LOGS_STORAGE_KEY])
+      ? result[AI_BOT_MESSAGE_LOGS_STORAGE_KEY]
+      : [];
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayStartMs = todayStart.getTime();
+    return logs.filter((log) => {
+      if (log?.skipped) {
+        return false;
+      }
+      const ts = Number(log?.sentTimestamp || log?.timestamp || 0);
+      return ts >= todayStartMs;
+    }).length;
   }
 
   function notifyAiBotCommentFailures() {
@@ -1902,7 +1952,11 @@
       Number(runtime.lastCommentAt || 0),
       Number(runtime.lastCommentAttemptAt || 0)
     );
-    const waitMs = Math.max(0, AI_BOT_COMMENT_COOLDOWN_MS - (Date.now() - lastCommentAt));
+    // 风控保护：基础冷却 + 随机抖动（0~30s）+ 连续失败降速（每失败 1 次 +60s）
+    const failures = Math.max(0, Number(runtime.consecutiveCommentFailures || 0));
+    const jitterMs = Math.floor(Math.random() * AI_BOT_COMMENT_COOLDOWN_MS);
+    const penaltyMs = failures * 2 * AI_BOT_COMMENT_COOLDOWN_MS;
+    const waitMs = Math.max(0, AI_BOT_COMMENT_COOLDOWN_MS + jitterMs + penaltyMs - (Date.now() - lastCommentAt));
     if (waitMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
@@ -2013,6 +2067,18 @@
     const latestSettings = await readAiBotSettings();
     if (!latestSettings.enabled) {
       throw new Error("AI Bot 已关闭");
+    }
+    // 风控保护：每日回复上限
+    if (latestSettings.dailyReplyLimit > 0) {
+      const todaySentCount = await getAiBotTodaySentCount();
+      if (todaySentCount >= latestSettings.dailyReplyLimit) {
+        throw new Error(`今日回复已达上限（${latestSettings.dailyReplyLimit} 条，已发 ${todaySentCount} 条）`);
+      }
+    }
+    // 风控保护：回复文本命中拒绝关键词时放弃发送
+    const matchedReplyKeyword = latestSettings.rejectedReplyKeywords.find((keyword) => text.includes(keyword));
+    if (matchedReplyKeyword) {
+      throw new Error(`回复内容命中拒绝关键词「${matchedReplyKeyword}」，已放弃发送`);
     }
     await waitForAiBotCommentCooldown();
     await markAiBotCommentAttempt();
@@ -3596,6 +3662,119 @@
   }
 
   // END src\background\ai-bot-runtime.js
+  // BEGIN src\background\mention-notify.js
+// @消息浏览器通知：独立于 AI Bot 的轻量轮询，有新 @ 消息时发系统通知。
+  function normalizeMentionNotifySettings(settings = {}) {
+    return {
+      enabled: settings?.enabled === true,
+      intervalMinutes: Math.max(5, Number.parseInt(settings?.intervalMinutes, 10) || 10)
+    };
+  }
+
+  async function readMentionNotifySettings() {
+    const result = await storageGet(MENTION_NOTIFY_STORAGE_KEY);
+    return normalizeMentionNotifySettings(result[MENTION_NOTIFY_STORAGE_KEY]);
+  }
+
+  async function writeMentionNotifySettings(settings) {
+    const normalized = normalizeMentionNotifySettings(settings);
+    await storageSet({ [MENTION_NOTIFY_STORAGE_KEY]: normalized });
+    return normalized;
+  }
+
+  async function syncMentionNotifyAlarm(options = {}) {
+    if (!chrome.alarms?.create || !chrome.alarms?.clear) {
+      return;
+    }
+    const settings = await readMentionNotifySettings();
+    if (options.reset === true) {
+      await chrome.alarms.clear(MENTION_NOTIFY_ALARM_NAME);
+    }
+    if (!settings.enabled) {
+      await chrome.alarms.clear(MENTION_NOTIFY_ALARM_NAME);
+      return;
+    }
+    chrome.alarms.create(MENTION_NOTIFY_ALARM_NAME, {
+      delayInMinutes: 1,
+      periodInMinutes: settings.intervalMinutes
+    });
+  }
+
+  function openXiaoheiheMessagesPage() {
+    const url = `${WEB_ORIGIN}/app/bbs`;
+    if (chrome.tabs?.create) {
+      chrome.tabs.create({ url });
+    } else {
+      chrome.windows?.create?.({ url });
+    }
+  }
+
+  function bindMentionNotifyNotificationActions() {
+    if (!chrome.notifications?.onButtonClicked && !chrome.notifications?.onClicked) {
+      return;
+    }
+    const handle = (notificationId) => {
+      if (notificationId === "better-xiaoheihe-mention-notify") {
+        openXiaoheiheMessagesPage();
+      }
+    };
+    chrome.notifications.onButtonClicked?.addListener((notificationId) => handle(notificationId));
+    chrome.notifications.onClicked?.addListener((notificationId) => handle(notificationId));
+  }
+
+  async function runMentionNotifyCheck() {
+    const settings = await readMentionNotifySettings();
+    if (!settings.enabled) {
+      return;
+    }
+    const heyboxId = await getCurrentHeyboxId();
+    if (!heyboxId) {
+      return;
+    }
+    const data = await fetchAiBotJson(buildMessageListUrl(heyboxId, { messageType: "16" }), {});
+    if (data?.status !== "ok") {
+      return;
+    }
+    const messages = Array.isArray(data?.result?.messages) ? data.result.messages : [];
+    if (!messages.length) {
+      return;
+    }
+    const latest = [...messages]
+      .filter((message) => Number(message?.timestamp || 0) > 0)
+      .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))[0];
+    if (!latest) {
+      return;
+    }
+    const messageId = String(latest.message_id || latest.mid || "");
+    const result = await storageGet(MENTION_NOTIFY_STORAGE_KEY);
+    const state = result[MENTION_NOTIFY_STORAGE_KEY] || {};
+    if (messageId && messageId === String(state.lastNotifiedMessageId || "")) {
+      return;
+    }
+    if (!chrome.notifications?.create) {
+      return;
+    }
+    const sender = latest.user_a || {};
+    const senderName = String(sender?.username || sender?.user_name || "小黑盒用户");
+    const text = String(latest?.text || latest?.content || "").replace(/<[^>]*>/g, "").slice(0, 120);
+    chrome.notifications.create("better-xiaoheihe-mention-notify", {
+      type: "basic",
+      iconUrl: "assets/icons/icon128.png",
+      title: `小黑盒：${senderName} @ 了你`,
+      message: text || "有新 @ 消息",
+      buttons: [{ title: "查看" }],
+      priority: 1
+    });
+    await storageSet({
+      [MENTION_NOTIFY_STORAGE_KEY]: {
+        ...state,
+        lastNotifiedMessageId: messageId,
+        lastNotifiedAt: Date.now(),
+        lastSender: senderName
+      }
+    });
+  }
+  // END src\background\mention-notify.js
   // BEGIN src\background\dnr-rules.js
 // DNR cookie/header 规则管理。
 // 本文件由原入口文件等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
@@ -3772,10 +3951,13 @@
 // 本文件由原入口文件等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
   chrome.runtime.onInstalled?.addListener(() => {
     syncAiBotAlarm({ reset: true });
+    syncMentionNotifyAlarm({ reset: true });
+    bindMentionNotifyNotificationActions();
   });
 
   chrome.runtime.onStartup?.addListener(() => {
     syncAiBotAlarm();
+    syncMentionNotifyAlarm();
   });
 
   chrome.alarms?.onAlarm?.addListener((alarm) => {
@@ -3787,6 +3969,9 @@
     }
     if (alarm?.name === AI_BOT_QUEUE_ALARM_NAME) {
       runAiBotQueueConsumer().catch(() => {});
+    }
+    if (alarm?.name === MENTION_NOTIFY_ALARM_NAME) {
+      runMentionNotifyCheck().catch(() => {});
     }
   });
 
@@ -3804,6 +3989,9 @@
     }
     if (areaName === "local" && changes[API_PARAMS_STORAGE_KEY]) {
       cachedApiParams = normalizeCachedApiParams(changes[API_PARAMS_STORAGE_KEY].newValue);
+    }
+    if (areaName === "local" && changes[MENTION_NOTIFY_STORAGE_KEY]) {
+      syncMentionNotifyAlarm({ reset: true });
     }
   });
 

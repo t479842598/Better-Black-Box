@@ -6168,6 +6168,66 @@
         background: linear-gradient(135deg, #ffffff 50%, #232323 50%);
       }
 
+      /* ===== AI Bot 仪表盘：周分布图表 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-week {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.02);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-week-title {
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.55);
+        margin-bottom: 8px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-week-bars {
+        display: flex;
+        align-items: flex-end;
+        gap: 6px;
+        height: 72px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-week-col {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 2px;
+        flex: 1;
+        min-width: 0;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-week-bar {
+        display: block;
+        width: 100%;
+        max-width: 26px;
+        border-radius: 4px 4px 0 0;
+        background: linear-gradient(180deg, #ff9d00, #ffb53d);
+        min-height: 4px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-week-count {
+        font-size: 10px;
+        color: rgba(0, 0, 0, 0.6);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-week-label {
+        font-size: 10px;
+        color: rgba(0, 0, 0, 0.45);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-stat-value.is-warn {
+        color: #e5484d;
+      }
+
+      /* ===== 提示词预设下拉 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-prompt-preset {
+        max-width: 140px;
+        font-size: 12px;
+        padding: 4px 6px;
+      }
+
+      /* ===== @消息通知设置 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__mention-notify-section {
+        margin-top: 10px;
+      }
+
     `;
     document.documentElement.appendChild(style);
   }

@@ -30,6 +30,8 @@
   const HOT_SEARCH_DISABLED_STORAGE_KEY = "better-xiaoheihe-hot-search-disabled";
   const ACCOUNT_PROFILE_STORAGE_KEY = "better-xiaoheihe-account-profile";
   const THEME_STORAGE_KEY = "better-xiaoheihe-theme";
+  const MENTION_NOTIFY_STORAGE_KEY = "better-xiaoheihe-mention-notify";
+  const MENTION_NOTIFY_ALARM_NAME = "better-xiaoheihe-mention-notify";
 
   const LOCAL_SETTINGS_STORAGE_KEYS = [
     HIDE_CY_COMMENTS_STORAGE_KEY,
@@ -75,6 +77,35 @@
   const DEFAULT_SUMMARY_PROMPT = "你是社区帖子总结助手，请用中文简洁输出：\n帖子总结\n一句话概括帖子核心内容。\n评论区信息\n提取评论区里有价值的观点、经验、补充或避坑信息，没有则跳过。\nAI简评\n像真实网友一样补充观点，避免AI味。\n返回md格式。";
   const AI_BOT_DEFAULT_PROMPT = "你是小黑盒社区自动回复助手。请根据消息类型、帖子正文、评论区上下文和触发消息的那条评论，生成一条自然、友好、简洁的中文回复。不要使用模板化开头，不要编造事实，不要输出Markdown。如果触发消息的评论内容只有表情（没有文字，表情数量可以是多个），那么你只回复一个表情，不要添加任何文字。";
   const AI_BOT_DEFAULT_FEED_PROMPT = "你是小黑盒社区暖贴助手。请根据帖子标题、正文和话题，生成一条自然、真实、简洁的中文评论，像普通用户浏览帖子后留下的感想。不要使用模板化开头，不要编造未提供的信息，不要输出Markdown。";
+
+  // AI 评论提示词预设（人设风格快捷填充，选择后写入 commentPrompt 可再编辑）
+  const AI_BOT_PROMPT_PRESETS = [
+    {
+      id: "default",
+      label: "默认助手",
+      prompt: AI_BOT_DEFAULT_PROMPT
+    },
+    {
+      id: "enthusiast",
+      label: "热心玩家",
+      prompt: "你是小黑盒社区热情的热心玩家。请根据消息类型、帖子正文、评论区上下文和触发消息的那条评论，生成一条活泼、热情、带点感叹和鼓励的中文回复，像一位乐于帮忙的老玩家。不要使用模板化开头，不要编造事实，不要输出Markdown。如果触发消息的评论内容只有表情（没有文字，表情数量可以是多个），那么你只回复一个表情，不要添加任何文字。"
+    },
+    {
+      id: "guide",
+      label: "攻略党",
+      prompt: "你是小黑盒社区资深的攻略型玩家。请根据消息类型、帖子正文、评论区上下文和触发消息的那条评论，生成一条专业、简洁、信息量足的中文回复，优先给出结论和关键建议，可以补充一两个实操要点。不要使用模板化开头，不要编造事实，不要输出Markdown。如果触发消息的评论内容只有表情（没有文字，表情数量可以是多个），那么你只回复一个表情，不要添加任何文字。"
+    },
+    {
+      id: "quiet",
+      label: "潜水低调",
+      prompt: "你是小黑盒社区低调的潜水玩家。请根据消息类型、帖子正文、评论区上下文和触发消息的那条评论，生成一条简短、随和、不抢戏的中文回复，一般一两句话即可，语气平淡自然。不要使用模板化开头，不要编造事实，不要输出Markdown。如果触发消息的评论内容只有表情（没有文字，表情数量可以是多个），那么你只回复一个表情，不要添加任何文字。"
+    },
+    {
+      id: "concise",
+      label: "极简惜字",
+      prompt: "你是小黑盒社区惜字如金的玩家。请根据消息类型、帖子正文、评论区上下文和触发消息的那条评论，生成一条极简的中文回复，最多不超过 15 个字，直击要点，不要寒暄客套。不要使用模板化开头，不要编造事实，不要输出Markdown。如果触发消息的评论内容只有表情（没有文字，表情数量可以是多个），那么你只回复一个表情，不要添加任何文字。"
+    }
+  ];
 
   const AI_PROVIDERS = {
     OPENAI_COMPATIBLE: "openai-compatible",
@@ -153,6 +184,7 @@
       feedPollMinutes: Math.max(AI_BOT_MIN_FEED_POLL_MINUTES, Number.parseInt(settings?.feedPollMinutes, 10) || AI_BOT_MIN_FEED_POLL_MINUTES),
       messageFreshMinutes: Math.max(1, Number.parseInt(settings?.messageFreshMinutes, 10) || 5),
       replyLimitPerLinkUser: Math.max(1, Number.parseInt(settings?.replyLimitPerLinkUser, 10) || AI_BOT_DEFAULT_REPLY_LIMIT_PER_LINK_USER),
+      dailyReplyLimit: Math.max(0, Number.parseInt(settings?.dailyReplyLimit, 10) || 0),
       globalHistoryEnabled: settings?.globalHistoryEnabled !== false,
       globalHistoryLimit: Math.min(
         AI_BOT_MAX_GLOBAL_HISTORY_LIMIT,
@@ -899,6 +931,59 @@
       commentReplies,
       mentionReplies
     };
+  }
+
+  // AI Bot 全局统计：累计回复、按类型分布、最近 7 天每日分布、发送失败次数
+  function getAiBotOverallStats() {
+    const stats = {
+      total: 0,
+      feed: 0,
+      comment: 0,
+      mention: 0,
+      failed: 0,
+      byDay: {}
+    };
+    aiBotMessageLogs.forEach((log) => {
+      if (log?.skipped) {
+        return;
+      }
+      const sentTimestamp = Number(log?.sentTimestamp || log?.timestamp || 0);
+      if (!sentTimestamp) {
+        return;
+      }
+      stats.total += 1;
+      const source = log.messageSource === "feed"
+        ? "feed"
+        : (log.messageSource === "comment" ? "comment" : "mention");
+      stats[source] += 1;
+      const day = new Date(sentTimestamp);
+      const dayKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      stats.byDay[dayKey] = (stats.byDay[dayKey] || 0) + 1;
+    });
+    // 发送失败次数：统计运行日志中“自动评论发送失败”的 error 条目
+    aiBotLogs.forEach((log) => {
+      if (log?.level === "error" && /发送失败/.test(log?.message || "")) {
+        stats.failed += 1;
+      }
+    });
+    return stats;
+  }
+
+  function getAiBotRecent7Days() {
+    const stats = getAiBotOverallStats();
+    const days = [];
+    for (let i = 6; i >= 0; i -= 1) {
+      const day = new Date();
+      day.setDate(day.getDate() - i);
+      const dayKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+      const label = `${day.getMonth() + 1}/${day.getDate()}`;
+      days.push({
+        key: dayKey,
+        label,
+        count: stats.byDay[dayKey] || 0
+      });
+    }
+    return days;
   }
 
   function persistAiBotSettingsState() {
@@ -7300,6 +7385,66 @@
       }
       .${SETTINGS_PANEL_CLASS} .better-settings__theme-swatch--auto {
         background: linear-gradient(135deg, #ffffff 50%, #232323 50%);
+      }
+
+      /* ===== AI Bot 仪表盘：周分布图表 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-week {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.02);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-week-title {
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.55);
+        margin-bottom: 8px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-week-bars {
+        display: flex;
+        align-items: flex-end;
+        gap: 6px;
+        height: 72px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-week-col {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 2px;
+        flex: 1;
+        min-width: 0;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-week-bar {
+        display: block;
+        width: 100%;
+        max-width: 26px;
+        border-radius: 4px 4px 0 0;
+        background: linear-gradient(180deg, #ff9d00, #ffb53d);
+        min-height: 4px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-week-count {
+        font-size: 10px;
+        color: rgba(0, 0, 0, 0.6);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-week-label {
+        font-size: 10px;
+        color: rgba(0, 0, 0, 0.45);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-stat-value.is-warn {
+        color: #e5484d;
+      }
+
+      /* ===== 提示词预设下拉 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-prompt-preset {
+        max-width: 140px;
+        font-size: 12px;
+        padding: 4px 6px;
+      }
+
+      /* ===== @消息通知设置 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__mention-notify-section {
+        margin-top: 10px;
       }
 
     `;
@@ -13723,6 +13868,32 @@
     `).join("");
   }
 
+
+  // ===== @消息通知设置（content 侧状态） =====
+  function normalizeMentionNotifySettings(settings = {}) {
+    return {
+      enabled: settings?.enabled === true,
+      intervalMinutes: Math.max(5, Number.parseInt(settings?.intervalMinutes, 10) || 10)
+    };
+  }
+
+  let mentionNotifySettings = normalizeMentionNotifySettings();
+
+  function readMentionNotifySettingsFromStorage() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(MENTION_NOTIFY_STORAGE_KEY, (result) => {
+        mentionNotifySettings = normalizeMentionNotifySettings(result?.[MENTION_NOTIFY_STORAGE_KEY]);
+        resolve(mentionNotifySettings);
+      });
+    });
+  }
+
+  function saveMentionNotifySettings(settings) {
+    mentionNotifySettings = normalizeMentionNotifySettings(settings);
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [MENTION_NOTIFY_STORAGE_KEY]: mentionNotifySettings }, resolve);
+    });
+  }
   // END src\content\settings-state.js
   // BEGIN src\content\settings-renderers.js
 // AI 设置和 AI Bot 设置表单渲染。
@@ -13935,6 +14106,10 @@
                 <input class="better-settings__text-input better-settings__ai-bot-reply-limit" type="number" min="1" step="1" value="${escapeHtml(aiBotSettings.replyLimitPerLinkUser)}">
               </label>
               <label class="better-settings__field better-settings__field--compact-number">
+                <span class="better-settings__field-title">每日回复上限（0=不限）</span>
+                <input class="better-settings__text-input better-settings__ai-bot-daily-limit" type="number" min="0" step="1" value="${escapeHtml(aiBotSettings.dailyReplyLimit)}">
+              </label>
+              <label class="better-settings__field better-settings__field--compact-number">
                 <span class="better-settings__field-title">最多历史对话（组）</span>
                 <input class="better-settings__text-input better-settings__ai-bot-history-limit" type="number" min="1" max="${AI_BOT_MAX_GLOBAL_HISTORY_LIMIT}" step="1" value="${escapeHtml(aiBotSettings.globalHistoryLimit)}">
               </label>
@@ -13966,6 +14141,12 @@
               <div class="better-settings__field-title">
                 <span>AI 评论提示词</span>
                 <div class="better-settings__field-title-actions">
+                  <select class="better-settings__select better-settings__ai-bot-prompt-preset" aria-label="提示词预设">
+                    <option value="">提示词预设…</option>
+                    ${AI_BOT_PROMPT_PRESETS.map((preset) => `
+                      <option value="${escapeHtml(preset.id)}">${escapeHtml(preset.label)}</option>
+                    `).join("")}
+                  </select>
                   <label class="better-settings__prompt-toggle">
                     <input class="better-settings__ai-bot-allow-emoji" type="checkbox"${aiBotSettings.allowEmoji ? " checked" : ""}>
                     <span>允许表情</span>
@@ -14702,6 +14883,9 @@
 
   function renderAiBotTodayStatsHtml() {
     const stats = getAiBotTodayStats();
+    const overall = getAiBotOverallStats();
+    const days = getAiBotRecent7Days();
+    const maxDayCount = Math.max(1, ...days.map((day) => day.count));
     return `
       <div class="better-settings__ai-bot-stats" data-ai-bot-today-stats>
         <div class="better-settings__ai-bot-stat">
@@ -14715,6 +14899,30 @@
         <div class="better-settings__ai-bot-stat">
           <span class="better-settings__ai-bot-stat-label">今天回复 @</span>
           <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.mentionReplies)}</span>
+        </div>
+        <div class="better-settings__ai-bot-stat">
+          <span class="better-settings__ai-bot-stat-label">累计回复</span>
+          <span class="better-settings__ai-bot-stat-value">${escapeHtml(overall.total)}</span>
+        </div>
+        <div class="better-settings__ai-bot-stat">
+          <span class="better-settings__ai-bot-stat-label">累计帖子评论</span>
+          <span class="better-settings__ai-bot-stat-value">${escapeHtml(overall.feed)}</span>
+        </div>
+        <div class="better-settings__ai-bot-stat">
+          <span class="better-settings__ai-bot-stat-label">发送失败</span>
+          <span class="better-settings__ai-bot-stat-value${overall.failed > 0 ? " is-warn" : ""}">${escapeHtml(overall.failed)}</span>
+        </div>
+      </div>
+      <div class="better-settings__ai-bot-week" data-ai-bot-week-chart>
+        <div class="better-settings__ai-bot-week-title">最近 7 天回复分布</div>
+        <div class="better-settings__ai-bot-week-bars">
+          ${days.map((day) => `
+            <div class="better-settings__ai-bot-week-col" title="${escapeHtml(day.label)}：${escapeHtml(day.count)} 条">
+              <span class="better-settings__ai-bot-week-bar" style="height: ${Math.max(4, Math.round((day.count / maxDayCount) * 100))}%"></span>
+              <span class="better-settings__ai-bot-week-count">${escapeHtml(day.count)}</span>
+              <span class="better-settings__ai-bot-week-label">${escapeHtml(day.label)}</span>
+            </div>
+          `).join("")}
         </div>
       </div>
     `;
@@ -14901,6 +15109,23 @@
           </button>
         </div>
       </div>
+      <div class="better-settings__section better-settings__mention-notify-section">
+        <div class="better-settings__hot-search-row">
+          <div class="better-settings__hot-search-copy">
+            <div class="better-settings__section-title">@ 消息通知</div>
+            <div class="better-settings__desc">后台定期检查新的 @ 我的消息，并通过系统通知提醒。</div>
+          </div>
+          <button class="better-settings__mention-notify-toggle" type="button" role="switch" aria-checked="${mentionNotifySettings.enabled ? "true" : "false"}" aria-label="${mentionNotifySettings.enabled ? "关闭@消息通知" : "开启@消息通知"}" title="${mentionNotifySettings.enabled ? "关闭通知" : "开启通知"}">
+            <span class="better-settings__level-switch" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div class="better-settings__compact-number-grid"${mentionNotifySettings.enabled ? "" : " hidden"} data-mention-notify-options>
+          <label class="better-settings__field better-settings__field--compact-number">
+            <span class="better-settings__field-title">检查周期（分钟，最低5）</span>
+            <input class="better-settings__text-input better-settings__mention-notify-interval" type="number" min="5" step="1" value="${escapeHtml(mentionNotifySettings.intervalMinutes)}">
+          </label>
+        </div>
+      </div>
       ${renderThemeSettingsContent()}
       <!-- 推广位（已隐藏）：插件沟通群 + 开源项目。如需恢复显示，将下方注释块取消注释。 -->
       <!--
@@ -14968,6 +15193,18 @@
       bindFeedLayoutRangeInputs(panel);
       bindThemeSettings(panel);
       mountAccountBar(panel);
+      readMentionNotifySettingsFromStorage().then((settings) => {
+        const toggle = panel.querySelector(".better-settings__mention-notify-toggle");
+        if (toggle) {
+          toggle.setAttribute("aria-checked", settings.enabled ? "true" : "false");
+          toggle.setAttribute("aria-label", settings.enabled ? "关闭@消息通知" : "开启@消息通知");
+          toggle.setAttribute("title", settings.enabled ? "关闭通知" : "开启通知");
+        }
+        const options = panel.querySelector("[data-mention-notify-options]");
+        if (options) {
+          options.hidden = !settings.enabled;
+        }
+      });
     } else {
       clearAccountBarTimers(panel);
     }
@@ -15349,6 +15586,7 @@
       feedSelectStrategy: panel.querySelector(".better-settings__ai-bot-feed-select-strategy")?.value,
       messageFreshMinutes: panel.querySelector(".better-settings__ai-bot-fresh-minutes")?.value,
       replyLimitPerLinkUser: panel.querySelector(".better-settings__ai-bot-reply-limit")?.value,
+      dailyReplyLimit: panel.querySelector(".better-settings__ai-bot-daily-limit")?.value,
       globalHistoryEnabled: panel.querySelector(".better-settings__ai-bot-global-history")?.checked !== false,
       globalHistoryLimit: panel.querySelector(".better-settings__ai-bot-history-limit")?.value,
       replyMentions,
@@ -15765,6 +16003,18 @@
         return;
       }
 
+      const mentionNotifyToggleButton = event.target.closest(".better-settings__mention-notify-toggle");
+      if (mentionNotifyToggleButton && panel.contains(mentionNotifyToggleButton)) {
+        const nextEnabled = !mentionNotifySettings.enabled;
+        saveMentionNotifySettings({
+          ...mentionNotifySettings,
+          enabled: nextEnabled
+        }).then(() => {
+          renderSettingsPanel();
+        });
+        return;
+      }
+
       const resetAiBotPromptButton = event.target.closest(".better-settings__ai-bot-reset-prompt");
       if (resetAiBotPromptButton && panel.contains(resetAiBotPromptButton)) {
         const promptInput = panel.querySelector(".better-settings__ai-bot-comment-prompt");
@@ -15996,7 +16246,7 @@
         saveAiSettingsFromPanel(panel);
       }
 
-      if (event.target.matches(".better-settings__ai-bot-base-url, .better-settings__ai-bot-model, .better-settings__ai-bot-api-key, .better-settings__ai-bot-poll-minutes, .better-settings__ai-bot-feed-poll-minutes, .better-settings__ai-bot-fresh-minutes, .better-settings__ai-bot-reply-limit, .better-settings__ai-bot-history-limit, .better-settings__ai-bot-whitelist, .better-settings__ai-bot-rejected-keywords, .better-settings__ai-bot-comment-prompt, .better-settings__ai-bot-feed-comment-prompt")) {
+      if (event.target.matches(".better-settings__ai-bot-base-url, .better-settings__ai-bot-model, .better-settings__ai-bot-api-key, .better-settings__ai-bot-poll-minutes, .better-settings__ai-bot-feed-poll-minutes, .better-settings__ai-bot-fresh-minutes, .better-settings__ai-bot-reply-limit, .better-settings__ai-bot-daily-limit, .better-settings__ai-bot-history-limit, .better-settings__ai-bot-whitelist, .better-settings__ai-bot-rejected-keywords, .better-settings__ai-bot-comment-prompt, .better-settings__ai-bot-feed-comment-prompt")) {
         if (event.target.matches(".better-settings__ai-bot-whitelist, .better-settings__ai-bot-rejected-keywords, .better-settings__ai-bot-comment-prompt, .better-settings__ai-bot-feed-comment-prompt")) {
           syncAutoHeightTextarea(event.target);
           repositionSettingsPanelIfOpen();
@@ -16018,11 +16268,34 @@
         return;
       }
 
+      if (event.target.matches(".better-settings__mention-notify-interval")) {
+        const interval = Math.max(5, Number.parseInt(event.target.value, 10) || 10);
+        event.target.value = String(interval);
+        saveMentionNotifySettings({
+          ...mentionNotifySettings,
+          intervalMinutes: interval
+        });
+        return;
+      }
+
       if (event.target.matches(".better-settings__layout-total-range, .better-settings__layout-post-range")) {
         const isTotalWidth = event.target.matches(".better-settings__layout-total-range");
         updateFeedLayoutSetting(isTotalWidth
           ? { totalWidth: event.target.value }
           : { postWidth: event.target.value });
+        return;
+      }
+
+      if (event.target.matches(".better-settings__ai-bot-prompt-preset")) {
+        const preset = AI_BOT_PROMPT_PRESETS.find((item) => item.id === event.target.value);
+        if (preset) {
+          const promptInput = panel.querySelector(".better-settings__ai-bot-comment-prompt");
+          if (promptInput) {
+            promptInput.value = preset.prompt;
+            syncAutoHeightTextarea(promptInput);
+          }
+        }
+        event.target.value = "";
         return;
       }
 
@@ -18295,6 +18568,7 @@
 
   async function start() {
     initTheme();
+    readMentionNotifySettingsFromStorage();
     installHomeFeedFocusRefreshGuard();
     installApiParamCapture();
     captureExistingApiEntries();

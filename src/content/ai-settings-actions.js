@@ -362,6 +362,7 @@
       feedSelectStrategy: panel.querySelector(".better-settings__ai-bot-feed-select-strategy")?.value,
       messageFreshMinutes: panel.querySelector(".better-settings__ai-bot-fresh-minutes")?.value,
       replyLimitPerLinkUser: panel.querySelector(".better-settings__ai-bot-reply-limit")?.value,
+      dailyReplyLimit: panel.querySelector(".better-settings__ai-bot-daily-limit")?.value,
       globalHistoryEnabled: panel.querySelector(".better-settings__ai-bot-global-history")?.checked !== false,
       globalHistoryLimit: panel.querySelector(".better-settings__ai-bot-history-limit")?.value,
       replyMentions,

@@ -208,6 +208,10 @@
                 <input class="better-settings__text-input better-settings__ai-bot-reply-limit" type="number" min="1" step="1" value="${escapeHtml(aiBotSettings.replyLimitPerLinkUser)}">
               </label>
               <label class="better-settings__field better-settings__field--compact-number">
+                <span class="better-settings__field-title">每日回复上限（0=不限）</span>
+                <input class="better-settings__text-input better-settings__ai-bot-daily-limit" type="number" min="0" step="1" value="${escapeHtml(aiBotSettings.dailyReplyLimit)}">
+              </label>
+              <label class="better-settings__field better-settings__field--compact-number">
                 <span class="better-settings__field-title">最多历史对话（组）</span>
                 <input class="better-settings__text-input better-settings__ai-bot-history-limit" type="number" min="1" max="${AI_BOT_MAX_GLOBAL_HISTORY_LIMIT}" step="1" value="${escapeHtml(aiBotSettings.globalHistoryLimit)}">
               </label>
@@ -239,6 +243,12 @@
               <div class="better-settings__field-title">
                 <span>AI 评论提示词</span>
                 <div class="better-settings__field-title-actions">
+                  <select class="better-settings__select better-settings__ai-bot-prompt-preset" aria-label="提示词预设">
+                    <option value="">提示词预设…</option>
+                    ${AI_BOT_PROMPT_PRESETS.map((preset) => `
+                      <option value="${escapeHtml(preset.id)}">${escapeHtml(preset.label)}</option>
+                    `).join("")}
+                  </select>
                   <label class="better-settings__prompt-toggle">
                     <input class="better-settings__ai-bot-allow-emoji" type="checkbox"${aiBotSettings.allowEmoji ? " checked" : ""}>
                     <span>允许表情</span>
