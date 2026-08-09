@@ -1,15 +1,10 @@
-# 更好的小黑盒（AI Bot 恢复版）
-
-> ⚠️ 本项目是基于 [k1m0206/better-XiaoHeiHe](https://github.com/k1m0206/better-XiaoHeiHe) 的个人 fork。
-> 原项目自 1.2 起移除了 AI Bot（自动回复）功能；本 fork 保留了商店版 1.2 中完整但被
-> 硬编码开关（`AI_BOT_FEATURE_ENABLED`）关闭的 AI Bot 代码，并将其重新打开，
-> 供个人继续编辑与使用。
+# 更好的小黑盒
 
 用于优化小黑盒网页社区浏览体验的浏览器扩展，主要增强信息流、评论预览、顶部导航、内容过滤和 AI 能力。
 
 ## 主要功能
 
-### AI Bot（本 fork 恢复）
+### AI Bot
 
 - 自动回复 @ 我的消息、评论/回复我的消息。
 - 支持为首页推荐帖生成主评论（暖贴）。
@@ -70,14 +65,6 @@
   - Gemini
 - 支持通过服务商、Base URL 和 API Key 拉取模型列表，也可手动填写模型。
 
-## 与上游的差异
-
-- `src/shared/constants.js`：`AI_BOT_FEATURE_ENABLED` 由 `false` 改为 `true`（并同步修改三个入口文件中的同名单例）。
-- `src/background/`、`src/content/`：保留了商店版 1.2 的 ai-bot-* 模块与 xiaoheihe-api.js（上游 GitHub 已删除这些文件）。
-- `scripts/build-source-bundles.ps1`：模块列表补齐 AI Bot 模块，顺序与商店版入口文件一致。
-- `manifest-firefox.json`：补充 `alarms`、`notifications` 权限。
-- `manifest.json`：保留商店版 `key`，本地加载时扩展 ID 与商店版一致，chrome.storage 数据可延续。
-
 ## 支持页面
 
 扩展会在以下路径及其子路径运行：
@@ -94,11 +81,8 @@ https://www.xiaoheihe.cn/app/search
 
 1. 打开 Chrome 或 Edge 的扩展管理页面（`chrome://extensions`）。
 2. 开启右上角“开发者模式”。
-3. 若商店版“更好的小黑盒”仍在安装状态，先点击“移除”（**不要**勾选“同时清除数据”，
-   以便保留已有设置；本 fork 的 manifest 保留了商店版 `key`，加载后扩展 ID 不变，
-   chrome.storage 数据可直接延续）。
-4. 点击“加载已解压缩的扩展程序”，选择本项目根目录。
-5. 打开小黑盒社区页面进行测试。
+3. 点击“加载已解压缩的扩展程序”，选择本项目根目录。
+4. 打开小黑盒社区页面进行测试。
 
 修改代码后，需要在扩展管理页面点击刷新按钮重新加载扩展，并刷新小黑盒页面。
 

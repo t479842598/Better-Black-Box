@@ -29,5 +29,5 @@
    "permissions": [ "storage", "alarms", "notifications", "cookies", "declarativeNetRequestWithHostAccess" ],
    "short_name": "__MSG_extensionShortName__",
    "update_url": "https://clients2.google.com/service/update2/crx",
-   "version": "1.2"
+   "version": "1.3"
 }
