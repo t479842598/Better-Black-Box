@@ -7502,6 +7502,26 @@
         background: rgba(0, 0, 0, 0.05);
       }
 
+      /* ===== 信息流稍后读按钮 ===== */
+      .${HOME_LAYOUT_CLASS} .better-read-later-btn {
+        padding: 2px 8px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 5px;
+        background: transparent;
+        color: rgba(0, 0, 0, 0.6);
+        font-size: 12px;
+        line-height: 1.6;
+        cursor: pointer;
+        margin-left: 6px;
+      }
+      .${HOME_LAYOUT_CLASS} .better-read-later-btn:hover {
+        background: rgba(0, 0, 0, 0.05);
+      }
+      .${HOME_LAYOUT_CLASS} .better-read-later-btn.is-saved {
+        border-color: #ff9d00;
+        color: #ff8a00;
+      }
+
     `;
     document.documentElement.appendChild(style);
   }
