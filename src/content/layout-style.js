@@ -6003,6 +6003,171 @@
           border-left: 0;
         }
       }
+      /* ===== 明暗主题（方案 C：全站滤镜反转 + 图片/视频/表情修复） ===== */
+      html {
+        transition: filter 0.25s ease;
+      }
+      html[data-better-theme="dark"] {
+        filter: invert(1) hue-rotate(180deg);
+        background-color: #1a1a1a;
+      }
+      html[data-better-theme="dark"] img,
+      html[data-better-theme="dark"] video,
+      html[data-better-theme="dark"] canvas,
+      html[data-better-theme="dark"] picture,
+      html[data-better-theme="dark"] [class*="avatar"],
+      html[data-better-theme="dark"] [class*="emoji"],
+      html[data-better-theme="dark"] [class*="sticker"],
+      html[data-better-theme="dark"] [class*="medal"] {
+        filter: invert(1) hue-rotate(180deg) !important;
+      }
+      html[data-better-theme="dark"] [class*="emoji"] img {
+        filter: none !important;
+      }
+
+      /* ===== 设置面板账号信息栏 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-bar {
+        margin: 0 0 10px;
+        padding: 10px 12px;
+        border: 1px solid var(--better-settings-border, rgba(0, 0, 0, 0.08));
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.025);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-link {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+        color: inherit;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-avatar {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        flex: 0 0 40px;
+        border-radius: 50%;
+        overflow: hidden;
+        background: rgba(0, 0, 0, 0.06);
+        font-size: 16px;
+        font-weight: 600;
+        color: rgba(0, 0, 0, 0.5);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+        flex: 1;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-name {
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.3;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.55);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-level {
+        padding: 0 6px;
+        border-radius: 4px;
+        background: rgba(0, 0, 0, 0.07);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-exp {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        flex: 1;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-exp-bar {
+        display: inline-block;
+        width: 90px;
+        height: 5px;
+        border-radius: 3px;
+        background: rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-exp-fill {
+        display: block;
+        height: 100%;
+        border-radius: 3px;
+        background: linear-gradient(90deg, #ff9d00, #ffb53d);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-exp-text {
+        font-size: 11px;
+        white-space: nowrap;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-medals-row {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        min-height: 0;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-medal {
+        width: 16px;
+        height: 16px;
+        object-fit: contain;
+      }
+
+      /* ===== 外观（明暗模式）设置 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-options {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 12px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 8px;
+        background: transparent;
+        color: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-option:hover {
+        background: rgba(0, 0, 0, 0.05);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-option.is-active {
+        border-color: #ff9d00;
+        color: #ff8a00;
+        font-weight: 600;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-swatch {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-swatch--light {
+        background: #ffffff;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-swatch--dark {
+        background: #232323;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-swatch--auto {
+        background: linear-gradient(135deg, #ffffff 50%, #232323 50%);
+      }
+
     `;
     document.documentElement.appendChild(style);
   }

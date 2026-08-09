@@ -96,6 +96,7 @@
           </button>
         </div>
       </div>
+      ${renderThemeSettingsContent()}
       <!-- 推广位（已隐藏）：插件沟通群 + 开源项目。如需恢复显示，将下方注释块取消注释。 -->
       <!--
       <div class="better-settings__external-links">
@@ -143,6 +144,7 @@
     }
 
     panel.innerHTML = `
+      ${renderAccountBar()}
       <div class="better-settings__tabs" role="tablist" aria-label="设置分类">
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.GENERAL}" aria-selected="${activeSettingsTab === SETTINGS_TABS.GENERAL ? "true" : "false"}">通用</button>
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.BLOCKED}" aria-selected="${activeSettingsTab === SETTINGS_TABS.BLOCKED ? "true" : "false"}">屏蔽</button>
@@ -159,6 +161,10 @@
     `;
     if (activeSettingsTab === SETTINGS_TABS.GENERAL) {
       bindFeedLayoutRangeInputs(panel);
+      bindThemeSettings(panel);
+      mountAccountBar(panel);
+    } else {
+      clearAccountBarTimers(panel);
     }
     syncSettingsAutoHeightTextareas(panel);
     if (activeSettingsTab === SETTINGS_TABS.AI) {

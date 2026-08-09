@@ -409,3 +409,14 @@
     return `https://api.xiaoheihe.cn${MESSAGE_API_PATH}?${params.toString()}`;
   }
 
+  function buildProfileApiUrl(options = {}) {
+    const baseParams = getBaseApiParams();
+    const params = new URLSearchParams({
+      ...baseParams,
+      ...createSignedParams(PROFILE_API_PATH),
+      userid: String(options.userid || baseParams.heybox_id || "")
+    });
+
+    return `https://api.xiaoheihe.cn${PROFILE_API_PATH}?${params.toString()}`;
+  }
+

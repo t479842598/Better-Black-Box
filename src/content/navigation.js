@@ -477,6 +477,7 @@
   }
 
   async function start() {
+    initTheme();
     installHomeFeedFocusRefreshGuard();
     installApiParamCapture();
     captureExistingApiEntries();

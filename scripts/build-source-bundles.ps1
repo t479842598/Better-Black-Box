@@ -60,6 +60,8 @@ Join-SourceBundle `
     "src\content\feed-actions.js",
     "src\content\settings-state.js",
     "src\content\settings-renderers.js",
+    "src\content\theme.js",
+    "src\content\account-bar.js",
     "src\content\ai-bot-log-panel.js",
     "src\content\settings-shell.js",
     "src\content\ai-settings-actions.js",

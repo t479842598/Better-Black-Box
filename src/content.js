@@ -29,6 +29,7 @@
   const FEED_LAYOUT_SETTINGS_STORAGE_KEY = "better-xiaoheihe-feed-layout-settings";
   const HOT_SEARCH_DISABLED_STORAGE_KEY = "better-xiaoheihe-hot-search-disabled";
   const ACCOUNT_PROFILE_STORAGE_KEY = "better-xiaoheihe-account-profile";
+  const THEME_STORAGE_KEY = "better-xiaoheihe-theme";
 
   const LOCAL_SETTINGS_STORAGE_KEYS = [
     HIDE_CY_COMMENTS_STORAGE_KEY,
@@ -45,7 +46,8 @@
     COMMENT_EMOJI_USAGE_STORAGE_KEY,
     FEED_LAYOUT_SETTINGS_STORAGE_KEY,
     HOT_SEARCH_DISABLED_STORAGE_KEY,
-    ACCOUNT_PROFILE_STORAGE_KEY
+    ACCOUNT_PROFILE_STORAGE_KEY,
+    THEME_STORAGE_KEY
   ];
 
   const LOCAL_SETTINGS_REQUEST_EVENT = "better-xiaoheihe-local-settings-request";
@@ -298,6 +300,7 @@
   const LINK_AWARD_API_PATH = "/bbs/app/profile/award/link";
   const FAVOUR_LIST_API_PATH = "/bbs/web/profile/favours";
   const MESSAGE_API_PATH = "/bbs/app/user/message";
+  const PROFILE_API_PATH = "/bbs/app/profile/user/profile";
   const EMOJI_API_PATH = "/bbs/app/api/emojis/list";
   const FEEDS_API_PATH = "/bbs/app/feeds";
   const SEARCH_WELCOME_API_PATH = "/bbs/app/api/search/welcome_page/v2";
@@ -7134,6 +7137,171 @@
           border-left: 0;
         }
       }
+      /* ===== 明暗主题（方案 C：全站滤镜反转 + 图片/视频/表情修复） ===== */
+      html {
+        transition: filter 0.25s ease;
+      }
+      html[data-better-theme="dark"] {
+        filter: invert(1) hue-rotate(180deg);
+        background-color: #1a1a1a;
+      }
+      html[data-better-theme="dark"] img,
+      html[data-better-theme="dark"] video,
+      html[data-better-theme="dark"] canvas,
+      html[data-better-theme="dark"] picture,
+      html[data-better-theme="dark"] [class*="avatar"],
+      html[data-better-theme="dark"] [class*="emoji"],
+      html[data-better-theme="dark"] [class*="sticker"],
+      html[data-better-theme="dark"] [class*="medal"] {
+        filter: invert(1) hue-rotate(180deg) !important;
+      }
+      html[data-better-theme="dark"] [class*="emoji"] img {
+        filter: none !important;
+      }
+
+      /* ===== 设置面板账号信息栏 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-bar {
+        margin: 0 0 10px;
+        padding: 10px 12px;
+        border: 1px solid var(--better-settings-border, rgba(0, 0, 0, 0.08));
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.025);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-link {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        text-decoration: none;
+        color: inherit;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-avatar {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        flex: 0 0 40px;
+        border-radius: 50%;
+        overflow: hidden;
+        background: rgba(0, 0, 0, 0.06);
+        font-size: 16px;
+        font-weight: 600;
+        color: rgba(0, 0, 0, 0.5);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+        flex: 1;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-name {
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.3;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.55);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-level {
+        padding: 0 6px;
+        border-radius: 4px;
+        background: rgba(0, 0, 0, 0.07);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-exp {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        flex: 1;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-exp-bar {
+        display: inline-block;
+        width: 90px;
+        height: 5px;
+        border-radius: 3px;
+        background: rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-exp-fill {
+        display: block;
+        height: 100%;
+        border-radius: 3px;
+        background: linear-gradient(90deg, #ff9d00, #ffb53d);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-exp-text {
+        font-size: 11px;
+        white-space: nowrap;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-medals-row {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        min-height: 0;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-medal {
+        width: 16px;
+        height: 16px;
+        object-fit: contain;
+      }
+
+      /* ===== 外观（明暗模式）设置 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-options {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 12px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 8px;
+        background: transparent;
+        color: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-option:hover {
+        background: rgba(0, 0, 0, 0.05);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-option.is-active {
+        border-color: #ff9d00;
+        color: #ff8a00;
+        font-weight: 600;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-swatch {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 1px solid rgba(0, 0, 0, 0.15);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-swatch--light {
+        background: #ffffff;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-swatch--dark {
+        background: #232323;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-swatch--auto {
+        background: linear-gradient(135deg, #ffffff 50%, #232323 50%);
+      }
+
     `;
     document.documentElement.appendChild(style);
   }
@@ -8107,6 +8275,17 @@
     });
 
     return `https://api.xiaoheihe.cn${MESSAGE_API_PATH}?${params.toString()}`;
+  }
+
+  function buildProfileApiUrl(options = {}) {
+    const baseParams = getBaseApiParams();
+    const params = new URLSearchParams({
+      ...baseParams,
+      ...createSignedParams(PROFILE_API_PATH),
+      userid: String(options.userid || baseParams.heybox_id || "")
+    });
+
+    return `https://api.xiaoheihe.cn${PROFILE_API_PATH}?${params.toString()}`;
   }
 
   // END src\content\api-signing.js
@@ -13970,6 +14149,315 @@
   };
 
   // END src\content\settings-renderers.js
+  // BEGIN src\content\theme.js
+// 明暗主题：跟随系统 / 亮色 / 暗色。
+// 方案 C：全站 filter 反转 + 定向修复图片/视频/表情，暗色规则见 layout-style.js。
+  const THEME_VALUES = ["auto", "light", "dark"];
+
+  const THEME_LABELS = {
+    auto: "跟随系统",
+    light: "亮色",
+    dark: "暗色"
+  };
+
+  function normalizeTheme(value) {
+    return THEME_VALUES.includes(value) ? value : "auto";
+  }
+
+  let currentTheme = "auto";
+
+  function getSystemDarkPreference() {
+    return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches === true;
+  }
+
+  function resolveTheme(theme) {
+    const normalized = normalizeTheme(theme);
+    if (normalized === "auto") {
+      return getSystemDarkPreference() ? "dark" : "light";
+    }
+    return normalized;
+  }
+
+  function applyTheme(theme) {
+    const resolved = resolveTheme(theme);
+    if (resolved === "dark") {
+      document.documentElement.dataset.betterTheme = "dark";
+    } else {
+      delete document.documentElement.dataset.betterTheme;
+    }
+  }
+
+  function readStoredTheme() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(THEME_STORAGE_KEY, (result) => {
+        currentTheme = normalizeTheme(result?.[THEME_STORAGE_KEY]);
+        resolve(currentTheme);
+      });
+    });
+  }
+
+  function saveTheme(theme) {
+    currentTheme = normalizeTheme(theme);
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [THEME_STORAGE_KEY]: currentTheme }, resolve);
+    });
+  }
+
+  function initTheme() {
+    readStoredTheme().then((theme) => {
+      applyTheme(theme);
+    });
+    window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.("change", () => {
+      readStoredTheme().then((theme) => {
+        if (normalizeTheme(theme) === "auto") {
+          applyTheme("auto");
+        }
+      });
+    });
+  }
+
+  function renderThemeSettingsContent() {
+    return `
+      <div class="better-settings__section better-settings__theme-section">
+        <div class="better-settings__section-title">外观</div>
+        <div class="better-settings__theme-options" role="radiogroup" aria-label="明暗模式">
+          ${THEME_VALUES.map((value) => {
+            const label = THEME_LABELS[value];
+            const active = currentTheme === value;
+            return `
+              <button class="better-settings__theme-option${active ? " is-active" : ""}" type="button" role="radio" aria-checked="${active ? "true" : "false"}" data-theme-option="${value}">
+                <span class="better-settings__theme-swatch better-settings__theme-swatch--${value}" aria-hidden="true"></span>
+                ${label}
+              </button>
+            `;
+          }).join("")}
+        </div>
+        <div class="better-settings__desc">暗色模式使用滤镜方案，图片、视频和表情会保持原始颜色。</div>
+      </div>
+    `;
+  }
+
+  function bindThemeSettings(panel) {
+    panel.querySelectorAll(".better-settings__theme-option").forEach((button) => {
+      button.addEventListener("click", () => {
+        const theme = normalizeTheme(button.dataset.themeOption);
+        saveTheme(theme).then(() => applyTheme(theme));
+        panel.querySelectorAll(".better-settings__theme-option").forEach((item) => {
+          const isActive = item === button;
+          item.classList.toggle("is-active", isActive);
+          item.setAttribute("aria-checked", String(isActive));
+        });
+      });
+    });
+  }
+  // END src\content\theme.js
+  // BEGIN src\content\account-bar.js
+// 设置面板顶部账号信息栏：头像、昵称、等级+经验进度、勋章，点击跳个人主页。
+// 数据源：api.xiaoheihe.cn/bbs/app/profile/user/profile（不传 userid 时返回当前登录用户）。
+  const ACCOUNT_PROFILE_CACHE_TTL_MS = 5 * 60 * 1000;
+  const ACCOUNT_PROFILE_REFRESH_MS = 30 * 1000;
+
+  function getCachedAccountProfile() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(ACCOUNT_PROFILE_STORAGE_KEY, (result) => {
+        const cached = result?.[ACCOUNT_PROFILE_STORAGE_KEY];
+        if (!cached || !cached.cachedAt) {
+          resolve(null);
+          return;
+        }
+        resolve(cached);
+      });
+    });
+  }
+
+  function parseAccountProfile(data) {
+    const result = data?.result || {};
+    const accountDetail = result.account_detail || {};
+    const info = result.info || {};
+    const levelInfo = accountDetail.level_info || info.level_info || {};
+    const medals = Array.isArray(accountDetail.medals)
+      ? accountDetail.medals
+      : (Array.isArray(info.medals) ? info.medals : []);
+    return {
+      username: String(accountDetail.username || info.username || "").trim(),
+      avatar: String(accountDetail.avatar || info.avatar || "").trim(),
+      heyboxId: String(accountDetail.heybox_id || accountDetail.userid || info.heybox_id || "").trim(),
+      level: Number(levelInfo.level || 0),
+      exp: Number(levelInfo.exp || info.exp || 0),
+      maxExp: Number(levelInfo.max_exp || info.max_exp || 0),
+      medals: medals.slice(0, 12).map((medal) => ({
+        name: String(medal?.name || medal?.medal_name || ""),
+        icon: String(medal?.icon || medal?.image || medal?.img || ""),
+        url: String(medal?.url || "")
+      }))
+    };
+  }
+
+  async function fetchAccountProfile({ force = false } = {}) {
+    if (!force) {
+      const cached = await getCachedAccountProfile();
+      if (cached && Date.now() - Number(cached.cachedAt || 0) < ACCOUNT_PROFILE_CACHE_TTL_MS) {
+        return cached;
+      }
+    }
+
+    try {
+      const response = await fetch(buildProfileApiUrl(), {
+        credentials: "include",
+        headers: {
+          accept: "application/json"
+        }
+      });
+      const data = await response.json();
+      if (data?.status !== "ok") {
+        throw new Error(data?.message || data?.msg || "账号信息查询失败");
+      }
+      const profile = parseAccountProfile(data);
+      const saved = {
+        ...profile,
+        cachedAt: Date.now()
+      };
+      chrome.storage.local.set({ [ACCOUNT_PROFILE_STORAGE_KEY]: saved });
+      return saved;
+    } catch (error) {
+      const cached = await getCachedAccountProfile();
+      if (cached) {
+        return cached;
+      }
+      return {
+        username: "",
+        avatar: "",
+        heyboxId: "",
+        level: 0,
+        exp: 0,
+        maxExp: 0,
+        medals: [],
+        cachedAt: 0
+      };
+    }
+  }
+
+  function buildAccountProfileUrl(heyboxId) {
+    return `https://www.xiaoheihe.cn/app/user/profile/${encodeURIComponent(heyboxId)}`;
+  }
+
+  function renderAccountProgress(profile) {
+    if (!profile.level) {
+      return "";
+    }
+    const percent = profile.maxExp > 0
+      ? Math.max(0, Math.min(100, Math.round((profile.exp / profile.maxExp) * 100)))
+      : 0;
+    const expText = profile.maxExp > 0 ? `${profile.exp}/${profile.maxExp}` : String(profile.exp);
+    return `
+      <span class="better-settings__account-level">Lv.${profile.level}</span>
+      <span class="better-settings__account-exp" title="经验 ${expText}">
+        <span class="better-settings__account-exp-bar">
+          <span class="better-settings__account-exp-fill" style="width: ${percent}%"></span>
+        </span>
+        <span class="better-settings__account-exp-text">${expText}</span>
+      </span>
+    `;
+  }
+
+  function renderAccountMedals(profile) {
+    if (!profile.medals.length) {
+      return "";
+    }
+    return `
+      <span class="better-settings__account-medals">
+        ${profile.medals.map((medal) => `
+          <img class="better-settings__account-medal" src="${escapeHtml(medal.icon || medal.url)}" alt="${escapeHtml(medal.name)}" title="${escapeHtml(medal.name)}" loading="lazy">
+        `).join("")}
+      </span>
+    `;
+  }
+
+  function renderAccountBar() {
+    return `
+      <div class="better-settings__account-bar" data-account-bar>
+        <a class="better-settings__account-link" href="#" target="_blank" rel="noopener noreferrer" aria-label="查看我的小黑盒主页">
+          <span class="better-settings__account-avatar" data-account-avatar></span>
+          <span class="better-settings__account-info">
+            <span class="better-settings__account-name" data-account-name>加载中…</span>
+            <span class="better-settings__account-meta" data-account-meta></span>
+            <span class="better-settings__account-medals-row" data-account-medals></span>
+          </span>
+        </a>
+      </div>
+    `;
+  }
+
+  function fillAccountBar(panel, profile) {
+    const bar = panel.querySelector("[data-account-bar]");
+    if (!bar) {
+      return;
+    }
+    const link = bar.querySelector(".better-settings__account-link");
+    const avatar = bar.querySelector("[data-account-avatar]");
+    const name = bar.querySelector("[data-account-name]");
+    const meta = bar.querySelector("[data-account-meta]");
+    const medalsRow = bar.querySelector("[data-account-medals]");
+
+    if (!profile.username && !profile.heyboxId) {
+      link.href = "#";
+      avatar.textContent = "";
+      avatar.classList.add("is-empty");
+      name.textContent = "未登录小黑盒";
+      meta.textContent = "";
+      medalsRow.innerHTML = "";
+      return;
+    }
+
+    if (profile.heyboxId) {
+      link.href = buildAccountProfileUrl(profile.heyboxId);
+    }
+    if (profile.avatar) {
+      avatar.innerHTML = "";
+      const img = document.createElement("img");
+      img.src = profile.avatar;
+      img.alt = "";
+      img.loading = "lazy";
+      avatar.appendChild(img);
+    } else {
+      avatar.textContent = (profile.username || "?")[0]?.toUpperCase() || "";
+    }
+    avatar.classList.toggle("is-empty", !profile.avatar);
+    name.textContent = profile.username || "小黑盒用户";
+    meta.innerHTML = renderAccountProgress(profile);
+    medalsRow.innerHTML = renderAccountMedals(profile);
+  }
+
+  async function mountAccountBar(panel) {
+    const bar = panel.querySelector("[data-account-bar]");
+    if (!bar) {
+      return;
+    }
+
+    const render = (profile) => fillAccountBar(panel, profile);
+
+    const cached = await getCachedAccountProfile();
+    if (cached && Date.now() - Number(cached.cachedAt || 0) < ACCOUNT_PROFILE_CACHE_TTL_MS) {
+      render(cached);
+      return;
+    }
+
+    render(await fetchAccountProfile());
+    const refreshTimer = window.setTimeout(async () => {
+      render(await fetchAccountProfile({ force: true }));
+    }, ACCOUNT_PROFILE_REFRESH_MS);
+    bar.dataset.refreshTimer = String(refreshTimer);
+  }
+
+  function clearAccountBarTimers(panel) {
+    const bar = panel.querySelector("[data-account-bar]");
+    const timer = Number(bar?.dataset.refreshTimer || 0);
+    if (timer) {
+      window.clearTimeout(timer);
+      delete bar.dataset.refreshTimer;
+    }
+  }
+  // END src\content\account-bar.js
   // BEGIN src\content\ai-bot-log-panel.js
 // AI Bot 日志、消息日志和队列面板渲染。
 // 本文件由上一级模块继续等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
@@ -14413,6 +14901,7 @@
           </button>
         </div>
       </div>
+      ${renderThemeSettingsContent()}
       <!-- 推广位（已隐藏）：插件沟通群 + 开源项目。如需恢复显示，将下方注释块取消注释。 -->
       <!--
       <div class="better-settings__external-links">
@@ -14460,6 +14949,7 @@
     }
 
     panel.innerHTML = `
+      ${renderAccountBar()}
       <div class="better-settings__tabs" role="tablist" aria-label="设置分类">
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.GENERAL}" aria-selected="${activeSettingsTab === SETTINGS_TABS.GENERAL ? "true" : "false"}">通用</button>
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.BLOCKED}" aria-selected="${activeSettingsTab === SETTINGS_TABS.BLOCKED ? "true" : "false"}">屏蔽</button>
@@ -14476,6 +14966,10 @@
     `;
     if (activeSettingsTab === SETTINGS_TABS.GENERAL) {
       bindFeedLayoutRangeInputs(panel);
+      bindThemeSettings(panel);
+      mountAccountBar(panel);
+    } else {
+      clearAccountBarTimers(panel);
     }
     syncSettingsAutoHeightTextareas(panel);
     if (activeSettingsTab === SETTINGS_TABS.AI) {
@@ -17800,6 +18294,7 @@
   }
 
   async function start() {
+    initTheme();
     installHomeFeedFocusRefreshGuard();
     installApiParamCapture();
     captureExistingApiEntries();

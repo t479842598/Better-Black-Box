@@ -95,6 +95,7 @@
   const LINK_AWARD_API_PATH = "/bbs/app/profile/award/link";
   const FAVOUR_LIST_API_PATH = "/bbs/web/profile/favours";
   const MESSAGE_API_PATH = "/bbs/app/user/message";
+  const PROFILE_API_PATH = "/bbs/app/profile/user/profile";
   const EMOJI_API_PATH = "/bbs/app/api/emojis/list";
   const FEEDS_API_PATH = "/bbs/app/feeds";
   const SEARCH_WELCOME_API_PATH = "/bbs/app/api/search/welcome_page/v2";
