@@ -479,6 +479,7 @@
   async function start() {
     initTheme();
     readMentionNotifySettingsFromStorage();
+    handlePendingAiSummaryAsk();
     applyKeywordHighlightsAndObserve();
     bindCommentDraftEvents();
     installHomeFeedFocusRefreshGuard();

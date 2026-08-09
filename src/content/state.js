@@ -52,7 +52,8 @@
     GENERAL: "general",
     AI: "ai",
     AIBOT: "aibot",
-    AIBOT_LOGS: "aibot-logs"
+    AIBOT_LOGS: "aibot-logs",
+    AISTATS: "aistats"
   };
   const COMMENT_PREVIEW_SORTS = {
     DEFAULT: "default",

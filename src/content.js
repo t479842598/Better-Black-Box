@@ -35,6 +35,8 @@
   const HIGHLIGHT_KEYWORDS_STORAGE_KEY = "better-xiaoheihe-highlight-keywords";
   const COMMENT_DRAFT_STORAGE_KEY = "better-xiaoheihe-comment-drafts";
   const READ_LATER_STORAGE_KEY = "better-xiaoheihe-read-later";
+  const AI_SUMMARY_HISTORY_STORAGE_KEY = "better-xiaoheihe-ai-summary-history";
+  const AI_SUMMARY_ASK_PENDING_STORAGE_KEY = "better-xiaoheihe-ai-summary-ask-pending";
 
   const LOCAL_SETTINGS_STORAGE_KEYS = [
     HIDE_CY_COMMENTS_STORAGE_KEY,
@@ -56,7 +58,9 @@
     HIGHLIGHT_KEYWORDS_STORAGE_KEY,
     COMMENT_DRAFT_STORAGE_KEY,
     READ_LATER_STORAGE_KEY,
-    MENTION_NOTIFY_STORAGE_KEY
+    MENTION_NOTIFY_STORAGE_KEY,
+    AI_SUMMARY_HISTORY_STORAGE_KEY,
+    AI_SUMMARY_ASK_PENDING_STORAGE_KEY
   ];
 
   const LOCAL_SETTINGS_REQUEST_EVENT = "better-xiaoheihe-local-settings-request";
@@ -296,7 +300,8 @@
     GENERAL: "general",
     AI: "ai",
     AIBOT: "aibot",
-    AIBOT_LOGS: "aibot-logs"
+    AIBOT_LOGS: "aibot-logs",
+    AISTATS: "aistats"
   };
   const COMMENT_PREVIEW_SORTS = {
     DEFAULT: "default",
@@ -7568,6 +7573,98 @@
         font-size: 13px;
       }
 
+      /* ===== AI 统计页：历史列表 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history {
+        margin-top: 12px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-title {
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.55);
+        margin-bottom: 6px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-list {
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item:last-child {
+        border-bottom: none;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item-main {
+        min-width: 0;
+        flex: 1;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item-title {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: inherit;
+        text-decoration: none;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item-meta {
+        font-size: 11px;
+        color: rgba(0, 0, 0, 0.45);
+        margin-top: 2px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item-text {
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.6);
+        margin-top: 2px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item-actions {
+        display: flex;
+        gap: 4px;
+        flex: 0 0 auto;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item-actions .better-settings__text-button {
+        padding: 3px 8px;
+        font-size: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 5px;
+        background: transparent;
+        cursor: pointer;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item-actions .better-settings__text-button:hover {
+        background: rgba(0, 0, 0, 0.05);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-breakdown {
+        margin-top: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 10px;
+        padding: 8px 12px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-breakdown-title {
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.55);
+        margin-bottom: 6px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-breakdown-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 3px 0;
+        font-size: 12px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-breakdown-value {
+        font-weight: 600;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-breakdown-value.is-warn {
+        color: #e5484d;
+      }
+
     `;
     document.documentElement.appendChild(style);
   }
@@ -12566,6 +12663,7 @@
     const entry = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
     const nextEntry = updater(entry) || entry;
     aiSummaryCache.set(linkId, nextEntry);
+    persistAiSummaryHistory(linkId, nextEntry);
     return nextEntry;
   }
 
@@ -13084,6 +13182,7 @@
       const elapsedMs = performance.now() - summaryStartTime;
       const content = cleanAiSummaryContent(summary, aiSettings.allowEmoji) || "没有生成总结。";
       aiSummaryCache.set(linkId, { content, elapsedMs, payload, chatMessages: [] });
+      persistAiSummaryHistory(linkId, aiSummaryCache.get(linkId), { title });
       setAiButtonComplete(button, true);
       if (aiSettings.autoPopup) {
         setAiSummaryModal(title, content, false, linkId, elapsedMs);
@@ -13133,6 +13232,7 @@
       const elapsedMs = performance.now() - summaryStartTime;
       const content = cleanAiSummaryContent(summary, aiSettings.allowEmoji) || "没有生成总结。";
       aiSummaryCache.set(linkId, { content, elapsedMs, payload, chatMessages: [] });
+      persistAiSummaryHistory(linkId, aiSummaryCache.get(linkId), { title });
       setAiButtonComplete(button, true);
       if (aiSettings.autoPopup) {
         setAiSummaryModal(title, content, false, linkId, elapsedMs);
@@ -13146,6 +13246,124 @@
   }
 
   // END src\content\ai-summary.js
+  // BEGIN src\content\ai-summary-history.js
+// AI 总结历史：持久化总结记录，支持从统计页继续提问（弹窗提问 / 打开帖子提问）。
+  const AI_SUMMARY_HISTORY_MAX = 100;
+
+  function normalizeAiSummaryHistoryRecord(record = {}) {
+    return {
+      linkId: String(record?.linkId || ""),
+      title: String(record?.title || "").slice(0, 200),
+      url: String(record?.url || ""),
+      content: String(record?.content || "").slice(0, 20000),
+      payload: String(record?.payload || "").slice(0, 60000),
+      chatMessages: Array.isArray(record?.chatMessages) ? record.chatMessages : [],
+      summaryAt: Number(record?.summaryAt || record?.updatedAt || 0),
+      updatedAt: Number(record?.updatedAt || record?.summaryAt || 0)
+    };
+  }
+
+  function readAiSummaryHistory() {
+    return requestLocalSettingsState().then((response) => {
+      const records = response?.ok ? response.values?.[AI_SUMMARY_HISTORY_STORAGE_KEY] : null;
+      return Array.isArray(records)
+        ? records.map(normalizeAiSummaryHistoryRecord).filter((record) => record.linkId)
+        : [];
+    });
+  }
+
+  function writeAiSummaryHistory(records) {
+    saveLocalSettings({
+      [AI_SUMMARY_HISTORY_STORAGE_KEY]: records.slice(0, AI_SUMMARY_HISTORY_MAX)
+    });
+    return Promise.resolve();
+  }
+
+  async function persistAiSummaryHistory(linkId, entry, options = {}) {
+    if (!linkId || !entry?.content) {
+      return;
+    }
+    const now = Date.now();
+    const title = String(options.title || "").trim() || "AI 总结";
+    const url = options.url || buildSummaryHistoryUrl(linkId);
+    const records = await readAiSummaryHistory();
+    const nextRecords = [
+      normalizeAiSummaryHistoryRecord({
+        linkId,
+        title,
+        url,
+        content: entry.content,
+        payload: entry.payload || "",
+        chatMessages: entry.chatMessages || [],
+        summaryAt: now,
+        updatedAt: now
+      }),
+      ...records.filter((record) => String(record.linkId) !== String(linkId))
+    ].slice(0, AI_SUMMARY_HISTORY_MAX);
+    await writeAiSummaryHistory(nextRecords);
+  }
+
+  function buildSummaryHistoryUrl(linkId) {
+    return `https://www.xiaoheihe.cn/app/bbs/link/${linkId}`;
+  }
+
+  // 弹窗提问：写回内存缓存并打开总结弹窗，聚焦提问框
+  async function openAiSummaryFromHistory(record) {
+    const normalized = normalizeAiSummaryHistoryRecord(record);
+    if (!normalized.linkId || !normalized.content) {
+      return;
+    }
+    aiSummaryCache.set(normalized.linkId, {
+      content: normalized.content,
+      elapsedMs: null,
+      payload: normalized.payload,
+      chatMessages: normalized.chatMessages
+    });
+    setAiSummaryModal(normalized.title || "AI 总结", normalized.content, false, normalized.linkId, null);
+    const modal = ensureAiSummaryModal();
+    const input = modal.querySelector(".better-ai-summary__chat-input");
+    window.setTimeout(() => input?.focus(), 50);
+  }
+
+  // 打开帖子并提问：暂存待提问标记，打开帖子页后自动弹出总结弹窗
+  async function openLinkAndAskFromHistory(record) {
+    const normalized = normalizeAiSummaryHistoryRecord(record);
+    if (!normalized.linkId) {
+      return;
+    }
+    const pending = {
+      linkId: normalized.linkId,
+      title: normalized.title,
+      url: normalized.url || buildSummaryHistoryUrl(normalized.linkId),
+      askedAt: Date.now()
+    };
+    saveLocalSettings({
+      [AI_SUMMARY_ASK_PENDING_STORAGE_KEY]: pending
+    });
+    window.open(pending.url, "_blank");
+  }
+
+  // 页面加载时：如果存在待提问标记（来自"打开帖子提问"），自动打开对应总结弹窗
+  async function handlePendingAiSummaryAsk() {
+    const response = await requestLocalSettingsState();
+    const pending = response?.ok ? response.values?.[AI_SUMMARY_ASK_PENDING_STORAGE_KEY] : null;
+    if (!pending || !pending.linkId) {
+      return;
+    }
+    saveLocalSettings({
+      [AI_SUMMARY_ASK_PENDING_STORAGE_KEY]: null
+    });
+    const currentLinkId = getCurrentLinkId();
+    if (!currentLinkId || String(currentLinkId) !== String(pending.linkId)) {
+      return;
+    }
+    const records = await readAiSummaryHistory();
+    const record = records.find((item) => String(item.linkId) === String(pending.linkId));
+    if (record?.content) {
+      await openAiSummaryFromHistory(record);
+    }
+  }
+  // END src\content\ai-summary-history.js
   // BEGIN src\content\feed-actions.js
 // 信息流点击捕获、行高同步、左侧菜单与快捷屏蔽。
 // 本文件由原入口文件等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
@@ -14132,7 +14350,7 @@
       SETTINGS_TABS.BLOCKED,
       SETTINGS_TABS.GENERAL,
       SETTINGS_TABS.AI,
-      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AIBOT_LOGS] : [])
+      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AIBOT_LOGS, SETTINGS_TABS.AISTATS] : [])
     ];
     if (blockedScopes.includes(tab)) {
       activeBlockedKeywordScope = normalizeBlockedKeywordScope(tab);
@@ -15449,6 +15667,97 @@
     }
   }
 
+  function renderAiBotStatsPanelContent() {
+    const stats = getAiBotTodayStats();
+    const overall = getAiBotOverallStats();
+    const days = getAiBotRecent7Days();
+    const maxDayCount = Math.max(1, ...days.map((day) => day.count));
+    const totalFailures = overall.failed;
+    const successRate = overall.total > 0
+      ? Math.max(0, Math.min(100, Math.round(((overall.total - totalFailures) / (overall.total + totalFailures)) * 100)))
+      : 0;
+    return `
+      <div class="better-settings__section better-settings__ai-section">
+        <div class="better-settings__ai-header">
+          <div>
+            <div class="better-settings__ai-title">AI 统计</div>
+            <div class="better-settings__ai-subtitle">自动回复数据概览（来自本地运行记录）</div>
+          </div>
+        </div>
+        <div class="better-settings__ai-body">
+          <div class="better-settings__ai-bot-stats" data-ai-bot-today-stats>
+            <div class="better-settings__ai-bot-stat">
+              <span class="better-settings__ai-bot-stat-label">今天评论帖子</span>
+              <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.feedComments)}</span>
+            </div>
+            <div class="better-settings__ai-bot-stat">
+              <span class="better-settings__ai-bot-stat-label">今天回复评论</span>
+              <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.commentReplies)}</span>
+            </div>
+            <div class="better-settings__ai-bot-stat">
+              <span class="better-settings__ai-bot-stat-label">今天回复 @</span>
+              <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.mentionReplies)}</span>
+            </div>
+            <div class="better-settings__ai-bot-stat">
+              <span class="better-settings__ai-bot-stat-label">累计回复</span>
+              <span class="better-settings__ai-bot-stat-value">${escapeHtml(overall.total)}</span>
+            </div>
+            <div class="better-settings__ai-bot-stat">
+              <span class="better-settings__ai-bot-stat-label">累计帖子评论</span>
+              <span class="better-settings__ai-bot-stat-value">${escapeHtml(overall.feed)}</span>
+            </div>
+            <div class="better-settings__ai-bot-stat">
+              <span class="better-settings__ai-bot-stat-label">发送失败</span>
+              <span class="better-settings__ai-bot-stat-value${overall.failed > 0 ? " is-warn" : ""}">${escapeHtml(overall.failed)}</span>
+            </div>
+          </div>
+          <div class="better-settings__ai-bot-week" data-ai-bot-week-chart>
+            <div class="better-settings__ai-bot-week-title">最近 7 天回复分布</div>
+            <div class="better-settings__ai-bot-week-bars">
+              ${days.map((day) => `
+                <div class="better-settings__ai-bot-week-col" title="${escapeHtml(day.label)}：${escapeHtml(day.count)} 条">
+                  <span class="better-settings__ai-bot-week-bar" style="height: ${Math.max(4, Math.round((day.count / maxDayCount) * 100))}%"></span>
+                  <span class="better-settings__ai-bot-week-count">${escapeHtml(day.count)}</span>
+                  <span class="better-settings__ai-bot-week-label">${escapeHtml(day.label)}</span>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+          <div class="better-settings__ai-bot-breakdown">
+            <div class="better-settings__ai-bot-breakdown-title">回复构成</div>
+            <div class="better-settings__ai-bot-breakdown-row">
+              <span class="better-settings__ai-bot-breakdown-label">@ 消息回复</span>
+              <span class="better-settings__ai-bot-breakdown-value">${escapeHtml(overall.mention)}</span>
+            </div>
+            <div class="better-settings__ai-bot-breakdown-row">
+              <span class="better-settings__ai-bot-breakdown-label">评论/回复</span>
+              <span class="better-settings__ai-bot-breakdown-value">${escapeHtml(overall.comment)}</span>
+            </div>
+            <div class="better-settings__ai-bot-breakdown-row">
+              <span class="better-settings__ai-bot-breakdown-label">首页暖贴</span>
+              <span class="better-settings__ai-bot-breakdown-value">${escapeHtml(overall.feed)}</span>
+            </div>
+            <div class="better-settings__ai-bot-breakdown-row">
+              <span class="better-settings__ai-bot-breakdown-label">成功率</span>
+              <span class="better-settings__ai-bot-breakdown-value${successRate < 80 ? " is-warn" : ""}">${escapeHtml(successRate)}%</span>
+            </div>
+          </div>
+          <div class="better-settings__ai-history">
+            <div class="better-settings__ai-history-title">AI 总结记录</div>
+            <div class="better-settings__ai-history-list" data-ai-summary-history-list>加载中…</div>
+          </div>
+          <div class="better-settings__ai-history">
+            <div class="better-settings__ai-history-title">回复记录</div>
+            <div class="better-settings__ai-history-list" data-ai-reply-history-list>加载中…</div>
+          </div>
+          <div class="better-settings__actions">
+            <button class="better-settings__text-button better-settings__ai-bot-view-logs" type="button">查看详细日志</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function renderAiBotLogsPanelContent() {
     return `
       <div class="better-settings__section better-settings__ai-section">
@@ -15520,6 +15829,67 @@
       messageLogList.innerHTML = renderAiBotMessageLogItemsHtml();
       messageLogList.dataset.signature = getAiBotMessageLogSignature();
       messageLogList.scrollTop = 0;
+    }
+  }
+
+  function renderAiSummaryHistoryListHtml(records) {
+    if (!records.length) {
+      return '<div class="better-settings__empty">暂无 AI 总结记录</div>';
+    }
+    return records.map((record) => `
+      <div class="better-settings__ai-history-item">
+        <div class="better-settings__ai-history-item-main">
+          <a class="better-settings__ai-history-item-title" href="${escapeHtml(record.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(record.title)}">${escapeHtml(record.title)}</a>
+          <div class="better-settings__ai-history-item-meta">
+            ${escapeHtml(new Date(record.updatedAt).toLocaleString("zh-CN", { hour12: false }))}
+            ${record.chatMessages?.length ? ` · 追问 ${escapeHtml(record.chatMessages.length / 2)} 轮` : ""}
+          </div>
+        </div>
+        <div class="better-settings__ai-history-item-actions">
+          <button class="better-settings__text-button" type="button" data-summary-ask-popup="${escapeHtml(record.linkId)}">弹窗提问</button>
+          <button class="better-settings__text-button" type="button" data-summary-ask-link="${escapeHtml(record.linkId)}">打开帖子</button>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  function renderAiReplyHistoryListHtml(logs) {
+    if (!logs.length) {
+      return '<div class="better-settings__empty">暂无回复记录（AI Bot 运行后产生）</div>';
+    }
+    return logs.slice(0, 50).map((log) => {
+      const linkId = String(log?.linkId || log?.messageId || "");
+      const title = String(log?.linkTitle || log?.title || log?.linkDescription || "");
+      const text = String(log?.replyPreview || log?.text || log?.content || "");
+      const url = linkId ? `https://www.xiaoheihe.cn/app/bbs/link/${linkId}` : "";
+      const time = Number(log?.sentTimestamp || log?.timestamp || 0)
+        ? new Date(log.sentTimestamp || log.timestamp).toLocaleString("zh-CN", { hour12: false })
+        : "";
+      return `
+        <div class="better-settings__ai-history-item">
+          <div class="better-settings__ai-history-item-main">
+            <div class="better-settings__ai-history-item-title">${escapeHtml(title || url || "未知帖子")}</div>
+            <div class="better-settings__ai-history-item-meta">
+              ${escapeHtml(log?.messageSource === "mention" ? "@ 消息" : (log?.messageSource === "feed" ? "首页暖贴" : "评论/回复"))}
+              ${time ? ` · ${escapeHtml(time)}` : ""}
+            </div>
+            ${text ? `<div class="better-settings__ai-history-item-text">${escapeHtml(text.slice(0, 120))}</div>` : ""}
+          </div>
+          ${url ? `<div class="better-settings__ai-history-item-actions"><a class="better-settings__text-button" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">打开帖子</a></div>` : ""}
+        </div>
+      `;
+    }).join("");
+  }
+
+  async function refreshAiStatsHistoryLists(panel) {
+    const summaryList = panel?.querySelector("[data-ai-summary-history-list]");
+    if (summaryList) {
+      const records = await readAiSummaryHistory();
+      summaryList.innerHTML = renderAiSummaryHistoryListHtml(records);
+    }
+    const replyList = panel?.querySelector("[data-ai-reply-history-list]");
+    if (replyList) {
+      replyList.innerHTML = renderAiReplyHistoryListHtml(aiBotMessageLogs);
     }
   }
 
@@ -15703,12 +16073,12 @@
     }
 
     panel.innerHTML = `
-      ${renderAccountBar()}
       <div class="better-settings__tabs" role="tablist" aria-label="设置分类">
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.GENERAL}" aria-selected="${activeSettingsTab === SETTINGS_TABS.GENERAL ? "true" : "false"}">通用</button>
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.BLOCKED}" aria-selected="${activeSettingsTab === SETTINGS_TABS.BLOCKED ? "true" : "false"}">屏蔽</button>
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AI}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AI ? "true" : "false"}">AI 总结</button>
         ${AI_BOT_FEATURE_ENABLED ? `<button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AIBOT}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AIBOT ? "true" : "false"}">AI Bot</button>` : ""}
+        ${AI_BOT_FEATURE_ENABLED ? `<button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AISTATS}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AISTATS ? "true" : "false"}">AI 统计</button>` : ""}
       </div>
       ${activeSettingsTab === SETTINGS_TABS.AI
         ? renderAiSettingsPanelContent()
@@ -15716,12 +16086,13 @@
           ? renderFeedLayoutSettingsPanelContent()
           : (activeSettingsTab === SETTINGS_TABS.AIBOT
             ? renderAiBotSettingsPanelContent()
-            : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS ? renderAiBotLogsPanelContent() : renderBlockedSettingsPanelContent())))}
+            : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS
+              ? renderAiBotLogsPanelContent()
+              : (activeSettingsTab === SETTINGS_TABS.AISTATS ? renderAiBotStatsPanelContent() : renderBlockedSettingsPanelContent()))))}
     `;
     if (activeSettingsTab === SETTINGS_TABS.GENERAL) {
       bindFeedLayoutRangeInputs(panel);
       bindThemeSettings(panel);
-      mountAccountBar(panel);
       refreshReadLaterList(panel);
       readMentionNotifySettingsFromStorage().then((settings) => {
         const toggle = panel.querySelector(".better-settings__mention-notify-toggle");
@@ -15735,13 +16106,14 @@
           options.hidden = !settings.enabled;
         }
       });
-    } else {
-      clearAccountBarTimers(panel);
     }
     syncSettingsAutoHeightTextareas(panel);
     if (activeSettingsTab === SETTINGS_TABS.AI) {
       syncAiConnectionDot("ai", aiSettings);
       loadCachedAiModelOptions(panel);
+    }
+    if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+      refreshAiStatsHistoryLists(panel);
     }
     if (activeSettingsTab === SETTINGS_TABS.AIBOT) {
       syncAiConnectionDot("aiBot", aiBotSettings);
@@ -16530,6 +16902,30 @@
       const hotSearchToggleButton = event.target.closest(".better-settings__hot-search-toggle");
       if (hotSearchToggleButton && panel.contains(hotSearchToggleButton)) {
         setHotSearchDisabled(!hotSearchDisabled);
+        return;
+      }
+
+      const summaryAskPopupButton = event.target.closest("[data-summary-ask-popup]");
+      if (summaryAskPopupButton && panel.contains(summaryAskPopupButton)) {
+        const linkId = summaryAskPopupButton.dataset.summaryAskPopup;
+        readAiSummaryHistory().then((records) => {
+          const record = records.find((item) => String(item.linkId) === String(linkId));
+          if (record) {
+            openAiSummaryFromHistory(record);
+          }
+        });
+        return;
+      }
+
+      const summaryAskLinkButton = event.target.closest("[data-summary-ask-link]");
+      if (summaryAskLinkButton && panel.contains(summaryAskLinkButton)) {
+        const linkId = summaryAskLinkButton.dataset.summaryAskLink;
+        readAiSummaryHistory().then((records) => {
+          const record = records.find((item) => String(item.linkId) === String(linkId));
+          if (record) {
+            openLinkAndAskFromHistory(record);
+          }
+        });
         return;
       }
 
@@ -19227,6 +19623,7 @@
   async function start() {
     initTheme();
     readMentionNotifySettingsFromStorage();
+    handlePendingAiSummaryAsk();
     applyKeywordHighlightsAndObserve();
     bindCommentDraftEvents();
     installHomeFeedFocusRefreshGuard();

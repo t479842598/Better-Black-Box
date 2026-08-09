@@ -20,7 +20,7 @@
       SETTINGS_TABS.BLOCKED,
       SETTINGS_TABS.GENERAL,
       SETTINGS_TABS.AI,
-      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AIBOT_LOGS] : [])
+      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AIBOT_LOGS, SETTINGS_TABS.AISTATS] : [])
     ];
     if (blockedScopes.includes(tab)) {
       activeBlockedKeywordScope = normalizeBlockedKeywordScope(tab);

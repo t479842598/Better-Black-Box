@@ -106,6 +106,30 @@
         return;
       }
 
+      const summaryAskPopupButton = event.target.closest("[data-summary-ask-popup]");
+      if (summaryAskPopupButton && panel.contains(summaryAskPopupButton)) {
+        const linkId = summaryAskPopupButton.dataset.summaryAskPopup;
+        readAiSummaryHistory().then((records) => {
+          const record = records.find((item) => String(item.linkId) === String(linkId));
+          if (record) {
+            openAiSummaryFromHistory(record);
+          }
+        });
+        return;
+      }
+
+      const summaryAskLinkButton = event.target.closest("[data-summary-ask-link]");
+      if (summaryAskLinkButton && panel.contains(summaryAskLinkButton)) {
+        const linkId = summaryAskLinkButton.dataset.summaryAskLink;
+        readAiSummaryHistory().then((records) => {
+          const record = records.find((item) => String(item.linkId) === String(linkId));
+          if (record) {
+            openLinkAndAskFromHistory(record);
+          }
+        });
+        return;
+      }
+
       const readLaterExportButton = event.target.closest(".better-settings__read-later-export");
       if (readLaterExportButton && panel.contains(readLaterExportButton)) {
         readReadLaterItems().then((items) => exportReadLaterMarkdown(items));

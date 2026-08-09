@@ -298,6 +298,7 @@
     const entry = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
     const nextEntry = updater(entry) || entry;
     aiSummaryCache.set(linkId, nextEntry);
+    persistAiSummaryHistory(linkId, nextEntry);
     return nextEntry;
   }
 
@@ -816,6 +817,7 @@
       const elapsedMs = performance.now() - summaryStartTime;
       const content = cleanAiSummaryContent(summary, aiSettings.allowEmoji) || "没有生成总结。";
       aiSummaryCache.set(linkId, { content, elapsedMs, payload, chatMessages: [] });
+      persistAiSummaryHistory(linkId, aiSummaryCache.get(linkId), { title });
       setAiButtonComplete(button, true);
       if (aiSettings.autoPopup) {
         setAiSummaryModal(title, content, false, linkId, elapsedMs);
@@ -865,6 +867,7 @@
       const elapsedMs = performance.now() - summaryStartTime;
       const content = cleanAiSummaryContent(summary, aiSettings.allowEmoji) || "没有生成总结。";
       aiSummaryCache.set(linkId, { content, elapsedMs, payload, chatMessages: [] });
+      persistAiSummaryHistory(linkId, aiSummaryCache.get(linkId), { title });
       setAiButtonComplete(button, true);
       if (aiSettings.autoPopup) {
         setAiSummaryModal(title, content, false, linkId, elapsedMs);

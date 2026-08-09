@@ -6340,6 +6340,98 @@
         font-size: 13px;
       }
 
+      /* ===== AI 统计页：历史列表 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history {
+        margin-top: 12px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-title {
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.55);
+        margin-bottom: 6px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-list {
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item:last-child {
+        border-bottom: none;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item-main {
+        min-width: 0;
+        flex: 1;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item-title {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: inherit;
+        text-decoration: none;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item-meta {
+        font-size: 11px;
+        color: rgba(0, 0, 0, 0.45);
+        margin-top: 2px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item-text {
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.6);
+        margin-top: 2px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item-actions {
+        display: flex;
+        gap: 4px;
+        flex: 0 0 auto;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item-actions .better-settings__text-button {
+        padding: 3px 8px;
+        font-size: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 5px;
+        background: transparent;
+        cursor: pointer;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-item-actions .better-settings__text-button:hover {
+        background: rgba(0, 0, 0, 0.05);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-breakdown {
+        margin-top: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 10px;
+        padding: 8px 12px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-breakdown-title {
+        font-size: 12px;
+        color: rgba(0, 0, 0, 0.55);
+        margin-bottom: 6px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-breakdown-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 3px 0;
+        font-size: 12px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-breakdown-value {
+        font-weight: 600;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-breakdown-value.is-warn {
+        color: #e5484d;
+      }
+
     `;
     document.documentElement.appendChild(style);
   }

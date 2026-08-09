@@ -57,6 +57,7 @@ Join-SourceBundle `
     "src\content\comment-cache.js",
     "src\content\feed.js",
     "src\content\ai-summary.js",
+    "src\content\ai-summary-history.js",
     "src\content\feed-actions.js",
     "src\content\keyword-highlight.js",
     "src\content\read-later.js",

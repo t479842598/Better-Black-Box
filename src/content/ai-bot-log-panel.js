@@ -293,6 +293,97 @@
     }
   }
 
+  function renderAiBotStatsPanelContent() {
+    const stats = getAiBotTodayStats();
+    const overall = getAiBotOverallStats();
+    const days = getAiBotRecent7Days();
+    const maxDayCount = Math.max(1, ...days.map((day) => day.count));
+    const totalFailures = overall.failed;
+    const successRate = overall.total > 0
+      ? Math.max(0, Math.min(100, Math.round(((overall.total - totalFailures) / (overall.total + totalFailures)) * 100)))
+      : 0;
+    return `
+      <div class="better-settings__section better-settings__ai-section">
+        <div class="better-settings__ai-header">
+          <div>
+            <div class="better-settings__ai-title">AI 统计</div>
+            <div class="better-settings__ai-subtitle">自动回复数据概览（来自本地运行记录）</div>
+          </div>
+        </div>
+        <div class="better-settings__ai-body">
+          <div class="better-settings__ai-bot-stats" data-ai-bot-today-stats>
+            <div class="better-settings__ai-bot-stat">
+              <span class="better-settings__ai-bot-stat-label">今天评论帖子</span>
+              <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.feedComments)}</span>
+            </div>
+            <div class="better-settings__ai-bot-stat">
+              <span class="better-settings__ai-bot-stat-label">今天回复评论</span>
+              <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.commentReplies)}</span>
+            </div>
+            <div class="better-settings__ai-bot-stat">
+              <span class="better-settings__ai-bot-stat-label">今天回复 @</span>
+              <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.mentionReplies)}</span>
+            </div>
+            <div class="better-settings__ai-bot-stat">
+              <span class="better-settings__ai-bot-stat-label">累计回复</span>
+              <span class="better-settings__ai-bot-stat-value">${escapeHtml(overall.total)}</span>
+            </div>
+            <div class="better-settings__ai-bot-stat">
+              <span class="better-settings__ai-bot-stat-label">累计帖子评论</span>
+              <span class="better-settings__ai-bot-stat-value">${escapeHtml(overall.feed)}</span>
+            </div>
+            <div class="better-settings__ai-bot-stat">
+              <span class="better-settings__ai-bot-stat-label">发送失败</span>
+              <span class="better-settings__ai-bot-stat-value${overall.failed > 0 ? " is-warn" : ""}">${escapeHtml(overall.failed)}</span>
+            </div>
+          </div>
+          <div class="better-settings__ai-bot-week" data-ai-bot-week-chart>
+            <div class="better-settings__ai-bot-week-title">最近 7 天回复分布</div>
+            <div class="better-settings__ai-bot-week-bars">
+              ${days.map((day) => `
+                <div class="better-settings__ai-bot-week-col" title="${escapeHtml(day.label)}：${escapeHtml(day.count)} 条">
+                  <span class="better-settings__ai-bot-week-bar" style="height: ${Math.max(4, Math.round((day.count / maxDayCount) * 100))}%"></span>
+                  <span class="better-settings__ai-bot-week-count">${escapeHtml(day.count)}</span>
+                  <span class="better-settings__ai-bot-week-label">${escapeHtml(day.label)}</span>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+          <div class="better-settings__ai-bot-breakdown">
+            <div class="better-settings__ai-bot-breakdown-title">回复构成</div>
+            <div class="better-settings__ai-bot-breakdown-row">
+              <span class="better-settings__ai-bot-breakdown-label">@ 消息回复</span>
+              <span class="better-settings__ai-bot-breakdown-value">${escapeHtml(overall.mention)}</span>
+            </div>
+            <div class="better-settings__ai-bot-breakdown-row">
+              <span class="better-settings__ai-bot-breakdown-label">评论/回复</span>
+              <span class="better-settings__ai-bot-breakdown-value">${escapeHtml(overall.comment)}</span>
+            </div>
+            <div class="better-settings__ai-bot-breakdown-row">
+              <span class="better-settings__ai-bot-breakdown-label">首页暖贴</span>
+              <span class="better-settings__ai-bot-breakdown-value">${escapeHtml(overall.feed)}</span>
+            </div>
+            <div class="better-settings__ai-bot-breakdown-row">
+              <span class="better-settings__ai-bot-breakdown-label">成功率</span>
+              <span class="better-settings__ai-bot-breakdown-value${successRate < 80 ? " is-warn" : ""}">${escapeHtml(successRate)}%</span>
+            </div>
+          </div>
+          <div class="better-settings__ai-history">
+            <div class="better-settings__ai-history-title">AI 总结记录</div>
+            <div class="better-settings__ai-history-list" data-ai-summary-history-list>加载中…</div>
+          </div>
+          <div class="better-settings__ai-history">
+            <div class="better-settings__ai-history-title">回复记录</div>
+            <div class="better-settings__ai-history-list" data-ai-reply-history-list>加载中…</div>
+          </div>
+          <div class="better-settings__actions">
+            <button class="better-settings__text-button better-settings__ai-bot-view-logs" type="button">查看详细日志</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function renderAiBotLogsPanelContent() {
     return `
       <div class="better-settings__section better-settings__ai-section">
@@ -364,6 +455,67 @@
       messageLogList.innerHTML = renderAiBotMessageLogItemsHtml();
       messageLogList.dataset.signature = getAiBotMessageLogSignature();
       messageLogList.scrollTop = 0;
+    }
+  }
+
+  function renderAiSummaryHistoryListHtml(records) {
+    if (!records.length) {
+      return '<div class="better-settings__empty">暂无 AI 总结记录</div>';
+    }
+    return records.map((record) => `
+      <div class="better-settings__ai-history-item">
+        <div class="better-settings__ai-history-item-main">
+          <a class="better-settings__ai-history-item-title" href="${escapeHtml(record.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(record.title)}">${escapeHtml(record.title)}</a>
+          <div class="better-settings__ai-history-item-meta">
+            ${escapeHtml(new Date(record.updatedAt).toLocaleString("zh-CN", { hour12: false }))}
+            ${record.chatMessages?.length ? ` · 追问 ${escapeHtml(record.chatMessages.length / 2)} 轮` : ""}
+          </div>
+        </div>
+        <div class="better-settings__ai-history-item-actions">
+          <button class="better-settings__text-button" type="button" data-summary-ask-popup="${escapeHtml(record.linkId)}">弹窗提问</button>
+          <button class="better-settings__text-button" type="button" data-summary-ask-link="${escapeHtml(record.linkId)}">打开帖子</button>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  function renderAiReplyHistoryListHtml(logs) {
+    if (!logs.length) {
+      return '<div class="better-settings__empty">暂无回复记录（AI Bot 运行后产生）</div>';
+    }
+    return logs.slice(0, 50).map((log) => {
+      const linkId = String(log?.linkId || log?.messageId || "");
+      const title = String(log?.linkTitle || log?.title || log?.linkDescription || "");
+      const text = String(log?.replyPreview || log?.text || log?.content || "");
+      const url = linkId ? `https://www.xiaoheihe.cn/app/bbs/link/${linkId}` : "";
+      const time = Number(log?.sentTimestamp || log?.timestamp || 0)
+        ? new Date(log.sentTimestamp || log.timestamp).toLocaleString("zh-CN", { hour12: false })
+        : "";
+      return `
+        <div class="better-settings__ai-history-item">
+          <div class="better-settings__ai-history-item-main">
+            <div class="better-settings__ai-history-item-title">${escapeHtml(title || url || "未知帖子")}</div>
+            <div class="better-settings__ai-history-item-meta">
+              ${escapeHtml(log?.messageSource === "mention" ? "@ 消息" : (log?.messageSource === "feed" ? "首页暖贴" : "评论/回复"))}
+              ${time ? ` · ${escapeHtml(time)}` : ""}
+            </div>
+            ${text ? `<div class="better-settings__ai-history-item-text">${escapeHtml(text.slice(0, 120))}</div>` : ""}
+          </div>
+          ${url ? `<div class="better-settings__ai-history-item-actions"><a class="better-settings__text-button" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">打开帖子</a></div>` : ""}
+        </div>
+      `;
+    }).join("");
+  }
+
+  async function refreshAiStatsHistoryLists(panel) {
+    const summaryList = panel?.querySelector("[data-ai-summary-history-list]");
+    if (summaryList) {
+      const records = await readAiSummaryHistory();
+      summaryList.innerHTML = renderAiSummaryHistoryListHtml(records);
+    }
+    const replyList = panel?.querySelector("[data-ai-reply-history-list]");
+    if (replyList) {
+      replyList.innerHTML = renderAiReplyHistoryListHtml(aiBotMessageLogs);
     }
   }
 

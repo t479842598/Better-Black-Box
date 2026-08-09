@@ -176,12 +176,12 @@
     }
 
     panel.innerHTML = `
-      ${renderAccountBar()}
       <div class="better-settings__tabs" role="tablist" aria-label="设置分类">
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.GENERAL}" aria-selected="${activeSettingsTab === SETTINGS_TABS.GENERAL ? "true" : "false"}">通用</button>
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.BLOCKED}" aria-selected="${activeSettingsTab === SETTINGS_TABS.BLOCKED ? "true" : "false"}">屏蔽</button>
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AI}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AI ? "true" : "false"}">AI 总结</button>
         ${AI_BOT_FEATURE_ENABLED ? `<button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AIBOT}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AIBOT ? "true" : "false"}">AI Bot</button>` : ""}
+        ${AI_BOT_FEATURE_ENABLED ? `<button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AISTATS}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AISTATS ? "true" : "false"}">AI 统计</button>` : ""}
       </div>
       ${activeSettingsTab === SETTINGS_TABS.AI
         ? renderAiSettingsPanelContent()
@@ -189,12 +189,13 @@
           ? renderFeedLayoutSettingsPanelContent()
           : (activeSettingsTab === SETTINGS_TABS.AIBOT
             ? renderAiBotSettingsPanelContent()
-            : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS ? renderAiBotLogsPanelContent() : renderBlockedSettingsPanelContent())))}
+            : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS
+              ? renderAiBotLogsPanelContent()
+              : (activeSettingsTab === SETTINGS_TABS.AISTATS ? renderAiBotStatsPanelContent() : renderBlockedSettingsPanelContent()))))}
     `;
     if (activeSettingsTab === SETTINGS_TABS.GENERAL) {
       bindFeedLayoutRangeInputs(panel);
       bindThemeSettings(panel);
-      mountAccountBar(panel);
       refreshReadLaterList(panel);
       readMentionNotifySettingsFromStorage().then((settings) => {
         const toggle = panel.querySelector(".better-settings__mention-notify-toggle");
@@ -208,13 +209,14 @@
           options.hidden = !settings.enabled;
         }
       });
-    } else {
-      clearAccountBarTimers(panel);
     }
     syncSettingsAutoHeightTextareas(panel);
     if (activeSettingsTab === SETTINGS_TABS.AI) {
       syncAiConnectionDot("ai", aiSettings);
       loadCachedAiModelOptions(panel);
+    }
+    if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+      refreshAiStatsHistoryLists(panel);
     }
     if (activeSettingsTab === SETTINGS_TABS.AIBOT) {
       syncAiConnectionDot("aiBot", aiBotSettings);
