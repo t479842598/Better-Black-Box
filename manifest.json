@@ -1,0 +1,33 @@
+{
+   "action": {
+   },
+   "background": {
+      "service_worker": "src/background.js"
+   },
+   "content_scripts": [ {
+      "js": [ "src/ai-bridge.js" ],
+      "matches": [ "https://xiaoheihe.cn/*", "https://www.xiaoheihe.cn/*" ],
+      "run_at": "document_start"
+   }, {
+      "js": [ "src/content.js" ],
+      "matches": [ "https://xiaoheihe.cn/*", "https://www.xiaoheihe.cn/*" ],
+      "run_at": "document_start",
+      "world": "MAIN"
+   } ],
+   "default_locale": "zh_CN",
+   "description": "__MSG_extensionDescription__",
+   "host_permissions": [ "\u003Call_urls>" ],
+   "icons": {
+      "128": "assets/icons/icon128.png",
+      "16": "assets/icons/icon16.png",
+      "32": "assets/icons/icon32.png",
+      "48": "assets/icons/icon48.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArKGg2iUmjzDYEm+T63HuH0aI3oclC8hEqXeWemYy1yKVz9fOJZ69xUGkgFHG65l0Ok1x7PHmQV36v/e5gH5Qd7b3pVgJ3pl25C4/svu2BViHghEgc1e61r8D6y40D3VqLqjhC1KTFVW1CXh/LN5ig21F0JkiKTVjM949C+vOkN5J4KRgzhojtupsR/DPDkSWL5V+ry7OnjzUcpqOzuRYPOydhH6srQmapXfgGOTEy3TfHWsMXFyRDKnkj48ZEkYQrKMaN185PKcaSRlmC0s6KfMhzcqRjvb/D17j94FjdSLAQV1irn1jNSZXn99pEqpHhEvUHvCZR7aQ8qCsrFNbZwIDAQAB",
+   "manifest_version": 3,
+   "name": "__MSG_extensionName__",
+   "permissions": [ "storage", "alarms", "notifications", "cookies", "declarativeNetRequestWithHostAccess" ],
+   "short_name": "__MSG_extensionShortName__",
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "1.2"
+}
