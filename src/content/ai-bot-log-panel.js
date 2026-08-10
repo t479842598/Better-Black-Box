@@ -296,7 +296,7 @@
   function renderAiBotLogSectionHtml() {
     return `
       <div class="better-settings__field-title better-settings__ai-bot-log-title">
-        <span class="better-settings__section-title">运行日志</span>
+        <span class="better-settings__section-title">运行记录</span>
         <button class="better-settings__text-button better-settings__ai-bot-clear-logs" type="button">清空日志</button>
       </div>
       <div class="better-settings__log-switch" role="tablist" aria-label="AI Bot 日志类型">
@@ -323,10 +323,7 @@
   }
 
   function renderAiBotStatsPanelContent() {
-    const stats = getAiBotTodayStats();
     const overall = getAiBotOverallStats();
-    const days = getAiBotRecent7Days();
-    const maxDayCount = Math.max(1, ...days.map((day) => day.count));
     const totalFailures = overall.failed;
     const successRate = overall.total > 0
       ? Math.max(0, Math.min(100, Math.round(((overall.total - totalFailures) / (overall.total + totalFailures)) * 100)))
@@ -340,44 +337,7 @@
           </div>
         </div>
         <div class="better-settings__ai-body">
-          <div class="better-settings__ai-bot-stats" data-ai-bot-today-stats>
-            <div class="better-settings__ai-bot-stat">
-              <span class="better-settings__ai-bot-stat-label">今天评论帖子</span>
-              <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.feedComments)}</span>
-            </div>
-            <div class="better-settings__ai-bot-stat">
-              <span class="better-settings__ai-bot-stat-label">今天回复评论</span>
-              <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.commentReplies)}</span>
-            </div>
-            <div class="better-settings__ai-bot-stat">
-              <span class="better-settings__ai-bot-stat-label">今天回复 @</span>
-              <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.mentionReplies)}</span>
-            </div>
-            <div class="better-settings__ai-bot-stat">
-              <span class="better-settings__ai-bot-stat-label">累计回复</span>
-              <span class="better-settings__ai-bot-stat-value">${escapeHtml(overall.total)}</span>
-            </div>
-            <div class="better-settings__ai-bot-stat">
-              <span class="better-settings__ai-bot-stat-label">累计帖子评论</span>
-              <span class="better-settings__ai-bot-stat-value">${escapeHtml(overall.feed)}</span>
-            </div>
-            <div class="better-settings__ai-bot-stat">
-              <span class="better-settings__ai-bot-stat-label">发送失败</span>
-              <span class="better-settings__ai-bot-stat-value${overall.failed > 0 ? " is-warn" : ""}">${escapeHtml(overall.failed)}</span>
-            </div>
-          </div>
-          <div class="better-settings__ai-bot-week" data-ai-bot-week-chart>
-            <div class="better-settings__ai-bot-week-title">最近 7 天回复分布</div>
-            <div class="better-settings__ai-bot-week-bars">
-              ${days.map((day) => `
-                <div class="better-settings__ai-bot-week-col" title="${escapeHtml(day.label)}：${escapeHtml(day.count)} 条">
-                  <span class="better-settings__ai-bot-week-bar" style="height: ${Math.max(4, Math.round((day.count / maxDayCount) * 100))}%"></span>
-                  <span class="better-settings__ai-bot-week-count">${escapeHtml(day.count)}</span>
-                  <span class="better-settings__ai-bot-week-label">${escapeHtml(day.label)}</span>
-                </div>
-              `).join("")}
-            </div>
-          </div>
+          ${renderAiBotTodayStatsHtml()}
           <div class="better-settings__ai-bot-breakdown">
             <div class="better-settings__ai-bot-breakdown-title">回复构成</div>
             <div class="better-settings__ai-bot-breakdown-row">
@@ -405,6 +365,21 @@
             <div class="better-settings__ai-history-title">回复记录</div>
             <div class="better-settings__ai-history-list" data-ai-reply-history-list>加载中…</div>
           </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderAiBotLogsPanelContent() {
+    return `
+      <div class="better-settings__section better-settings__ai-section">
+        <div class="better-settings__ai-header">
+          <div>
+            <div class="better-settings__ai-title">运行日志</div>
+            <div class="better-settings__ai-subtitle">动态读取本地运行记录，每 10 秒自动刷新</div>
+          </div>
+        </div>
+        <div class="better-settings__ai-body">
           ${renderAiBotLogSectionHtml()}
         </div>
       </div>
@@ -470,7 +445,11 @@
     if (!logs.length) {
       return '<div class="better-settings__empty">暂无回复记录（AI Bot 运行后产生）</div>';
     }
-    return logs.slice(0, 50).map((log) => {
+    const totalPages = Math.max(1, Math.ceil(logs.length / AI_REPLY_HISTORY_PAGE_SIZE));
+    aiReplyHistoryPage = Math.max(1, Math.min(aiReplyHistoryPage, totalPages));
+    const pageStart = (aiReplyHistoryPage - 1) * AI_REPLY_HISTORY_PAGE_SIZE;
+    const pageLogs = logs.slice(pageStart, pageStart + AI_REPLY_HISTORY_PAGE_SIZE);
+    const itemsHtml = pageLogs.map((log) => {
       const linkId = String(log?.linkId || log?.messageId || "");
       const title = String(log?.linkTitle || log?.title || log?.linkDescription || "");
       const text = String(log?.replyPreview || log?.text || log?.content || "");
@@ -492,6 +471,14 @@
         </div>
       `;
     }).join("");
+    const paginationHtml = totalPages > 1 ? `
+      <div class="better-settings__pagination">
+        <button class="better-settings__text-button" type="button" data-reply-history-page="prev"${aiReplyHistoryPage === 1 ? " disabled" : ""}>上一页</button>
+        <span class="better-settings__pagination-info">第 ${escapeHtml(aiReplyHistoryPage)} / ${escapeHtml(totalPages)} 页 · 共 ${escapeHtml(logs.length)} 条</span>
+        <button class="better-settings__text-button" type="button" data-reply-history-page="next"${aiReplyHistoryPage === totalPages ? " disabled" : ""}>下一页</button>
+      </div>
+    ` : "";
+    return itemsHtml + paginationHtml;
   }
 
   async function refreshAiStatsHistoryLists(panel) {

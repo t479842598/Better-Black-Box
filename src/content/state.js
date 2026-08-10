@@ -52,6 +52,7 @@
     GENERAL: "general",
     AI: "ai",
     AIBOT: "aibot",
+    AIBOT_LOGS: "aibot-logs",
     AISTATS: "aistats"
   };
   const COMMENT_PREVIEW_SORTS = {
@@ -152,6 +153,8 @@
   let activeAiBotLogView = "runtime";
   let activeAiBotMessageLogFilter = "all";
   const expandedAiBotLogIds = new Set();
+  const AI_REPLY_HISTORY_PAGE_SIZE = 10;
+  let aiReplyHistoryPage = 1;
   const aiConnectionStatus = {
     ai: { state: "idle", fingerprint: "" },
     aiBot: { state: "idle", fingerprint: "" }

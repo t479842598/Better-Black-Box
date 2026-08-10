@@ -20,7 +20,7 @@
       SETTINGS_TABS.BLOCKED,
       SETTINGS_TABS.GENERAL,
       SETTINGS_TABS.AI,
-      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AISTATS] : [])
+      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AISTATS, SETTINGS_TABS.AIBOT_LOGS] : [])
     ];
     if (blockedScopes.includes(tab)) {
       activeBlockedKeywordScope = normalizeBlockedKeywordScope(tab);
@@ -29,9 +29,9 @@
       activeSettingsTab = standaloneTabs.includes(tab) ? tab : SETTINGS_TABS.GENERAL;
     }
     renderSettingsPanel();
-    if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+    if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
       loadEmojis().then(() => {
-        if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+        if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
           refreshAiBotLogsPanel();
         }
       });

@@ -300,6 +300,7 @@
     GENERAL: "general",
     AI: "ai",
     AIBOT: "aibot",
+    AIBOT_LOGS: "aibot-logs",
     AISTATS: "aistats"
   };
   const COMMENT_PREVIEW_SORTS = {
@@ -400,6 +401,8 @@
   let activeAiBotLogView = "runtime";
   let activeAiBotMessageLogFilter = "all";
   const expandedAiBotLogIds = new Set();
+  const AI_REPLY_HISTORY_PAGE_SIZE = 10;
+  let aiReplyHistoryPage = 1;
   const aiConnectionStatus = {
     ai: { state: "idle", fingerprint: "" },
     aiBot: { state: "idle", fingerprint: "" }
@@ -7594,6 +7597,26 @@
         color: rgba(0, 0, 0, 0.55);
         margin-bottom: 6px;
       }
+
+      /* ===== 回复记录分页 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__pagination {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 10px 0 2px;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__pagination .better-settings__text-button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__pagination-info {
+        color: #8a9299;
+        font-size: 12px;
+        line-height: 18px;
+      }
       .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-list {
         border: 1px solid rgba(0, 0, 0, 0.08);
         border-radius: 10px;
@@ -14340,7 +14363,7 @@
       SETTINGS_TABS.BLOCKED,
       SETTINGS_TABS.GENERAL,
       SETTINGS_TABS.AI,
-      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AISTATS] : [])
+      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AISTATS, SETTINGS_TABS.AIBOT_LOGS] : [])
     ];
     if (blockedScopes.includes(tab)) {
       activeBlockedKeywordScope = normalizeBlockedKeywordScope(tab);
@@ -14349,9 +14372,9 @@
       activeSettingsTab = standaloneTabs.includes(tab) ? tab : SETTINGS_TABS.GENERAL;
     }
     renderSettingsPanel();
-    if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+    if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
       loadEmojis().then(() => {
-        if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+        if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
           refreshAiBotLogsPanel();
         }
       });
@@ -14905,9 +14928,6 @@
               <textarea class="better-settings__textarea better-settings__ai-bot-feed-comment-prompt">${escapeHtml(aiBotSettings.feedCommentPrompt)}</textarea>
             </div>
           </details>
-          <div class="better-settings__actions">
-            <button class="better-settings__primary better-settings__ai-bot-view-logs" type="button">查看运行日志</button>
-          </div>
         </div>
       </div>
     `;
@@ -15660,7 +15680,7 @@
   function renderAiBotLogSectionHtml() {
     return `
       <div class="better-settings__field-title better-settings__ai-bot-log-title">
-        <span class="better-settings__section-title">运行日志</span>
+        <span class="better-settings__section-title">运行记录</span>
         <button class="better-settings__text-button better-settings__ai-bot-clear-logs" type="button">清空日志</button>
       </div>
       <div class="better-settings__log-switch" role="tablist" aria-label="AI Bot 日志类型">
@@ -15687,10 +15707,7 @@
   }
 
   function renderAiBotStatsPanelContent() {
-    const stats = getAiBotTodayStats();
     const overall = getAiBotOverallStats();
-    const days = getAiBotRecent7Days();
-    const maxDayCount = Math.max(1, ...days.map((day) => day.count));
     const totalFailures = overall.failed;
     const successRate = overall.total > 0
       ? Math.max(0, Math.min(100, Math.round(((overall.total - totalFailures) / (overall.total + totalFailures)) * 100)))
@@ -15704,44 +15721,7 @@
           </div>
         </div>
         <div class="better-settings__ai-body">
-          <div class="better-settings__ai-bot-stats" data-ai-bot-today-stats>
-            <div class="better-settings__ai-bot-stat">
-              <span class="better-settings__ai-bot-stat-label">今天评论帖子</span>
-              <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.feedComments)}</span>
-            </div>
-            <div class="better-settings__ai-bot-stat">
-              <span class="better-settings__ai-bot-stat-label">今天回复评论</span>
-              <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.commentReplies)}</span>
-            </div>
-            <div class="better-settings__ai-bot-stat">
-              <span class="better-settings__ai-bot-stat-label">今天回复 @</span>
-              <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.mentionReplies)}</span>
-            </div>
-            <div class="better-settings__ai-bot-stat">
-              <span class="better-settings__ai-bot-stat-label">累计回复</span>
-              <span class="better-settings__ai-bot-stat-value">${escapeHtml(overall.total)}</span>
-            </div>
-            <div class="better-settings__ai-bot-stat">
-              <span class="better-settings__ai-bot-stat-label">累计帖子评论</span>
-              <span class="better-settings__ai-bot-stat-value">${escapeHtml(overall.feed)}</span>
-            </div>
-            <div class="better-settings__ai-bot-stat">
-              <span class="better-settings__ai-bot-stat-label">发送失败</span>
-              <span class="better-settings__ai-bot-stat-value${overall.failed > 0 ? " is-warn" : ""}">${escapeHtml(overall.failed)}</span>
-            </div>
-          </div>
-          <div class="better-settings__ai-bot-week" data-ai-bot-week-chart>
-            <div class="better-settings__ai-bot-week-title">最近 7 天回复分布</div>
-            <div class="better-settings__ai-bot-week-bars">
-              ${days.map((day) => `
-                <div class="better-settings__ai-bot-week-col" title="${escapeHtml(day.label)}：${escapeHtml(day.count)} 条">
-                  <span class="better-settings__ai-bot-week-bar" style="height: ${Math.max(4, Math.round((day.count / maxDayCount) * 100))}%"></span>
-                  <span class="better-settings__ai-bot-week-count">${escapeHtml(day.count)}</span>
-                  <span class="better-settings__ai-bot-week-label">${escapeHtml(day.label)}</span>
-                </div>
-              `).join("")}
-            </div>
-          </div>
+          ${renderAiBotTodayStatsHtml()}
           <div class="better-settings__ai-bot-breakdown">
             <div class="better-settings__ai-bot-breakdown-title">回复构成</div>
             <div class="better-settings__ai-bot-breakdown-row">
@@ -15769,6 +15749,21 @@
             <div class="better-settings__ai-history-title">回复记录</div>
             <div class="better-settings__ai-history-list" data-ai-reply-history-list>加载中…</div>
           </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderAiBotLogsPanelContent() {
+    return `
+      <div class="better-settings__section better-settings__ai-section">
+        <div class="better-settings__ai-header">
+          <div>
+            <div class="better-settings__ai-title">运行日志</div>
+            <div class="better-settings__ai-subtitle">动态读取本地运行记录，每 10 秒自动刷新</div>
+          </div>
+        </div>
+        <div class="better-settings__ai-body">
           ${renderAiBotLogSectionHtml()}
         </div>
       </div>
@@ -15834,7 +15829,11 @@
     if (!logs.length) {
       return '<div class="better-settings__empty">暂无回复记录（AI Bot 运行后产生）</div>';
     }
-    return logs.slice(0, 50).map((log) => {
+    const totalPages = Math.max(1, Math.ceil(logs.length / AI_REPLY_HISTORY_PAGE_SIZE));
+    aiReplyHistoryPage = Math.max(1, Math.min(aiReplyHistoryPage, totalPages));
+    const pageStart = (aiReplyHistoryPage - 1) * AI_REPLY_HISTORY_PAGE_SIZE;
+    const pageLogs = logs.slice(pageStart, pageStart + AI_REPLY_HISTORY_PAGE_SIZE);
+    const itemsHtml = pageLogs.map((log) => {
       const linkId = String(log?.linkId || log?.messageId || "");
       const title = String(log?.linkTitle || log?.title || log?.linkDescription || "");
       const text = String(log?.replyPreview || log?.text || log?.content || "");
@@ -15856,6 +15855,14 @@
         </div>
       `;
     }).join("");
+    const paginationHtml = totalPages > 1 ? `
+      <div class="better-settings__pagination">
+        <button class="better-settings__text-button" type="button" data-reply-history-page="prev"${aiReplyHistoryPage === 1 ? " disabled" : ""}>上一页</button>
+        <span class="better-settings__pagination-info">第 ${escapeHtml(aiReplyHistoryPage)} / ${escapeHtml(totalPages)} 页 · 共 ${escapeHtml(logs.length)} 条</span>
+        <button class="better-settings__text-button" type="button" data-reply-history-page="next"${aiReplyHistoryPage === totalPages ? " disabled" : ""}>下一页</button>
+      </div>
+    ` : "";
+    return itemsHtml + paginationHtml;
   }
 
   async function refreshAiStatsHistoryLists(panel) {
@@ -16056,6 +16063,7 @@
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AI}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AI ? "true" : "false"}">AI 总结</button>
         ${AI_BOT_FEATURE_ENABLED ? `<button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AIBOT}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AIBOT ? "true" : "false"}">AI Bot</button>` : ""}
         ${AI_BOT_FEATURE_ENABLED ? `<button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AISTATS}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AISTATS ? "true" : "false"}">AI 统计</button>` : ""}
+        ${AI_BOT_FEATURE_ENABLED ? `<button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AIBOT_LOGS}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS ? "true" : "false"}">运行日志</button>` : ""}
       </div>
       ${activeSettingsTab === SETTINGS_TABS.AI
         ? renderAiSettingsPanelContent()
@@ -16063,7 +16071,9 @@
           ? renderFeedLayoutSettingsPanelContent()
           : (activeSettingsTab === SETTINGS_TABS.AIBOT
             ? renderAiBotSettingsPanelContent()
-            : (activeSettingsTab === SETTINGS_TABS.AISTATS ? renderAiBotStatsPanelContent() : renderBlockedSettingsPanelContent())))}
+            : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS
+              ? renderAiBotLogsPanelContent()
+              : (activeSettingsTab === SETTINGS_TABS.AISTATS ? renderAiBotStatsPanelContent() : renderBlockedSettingsPanelContent()))))}
     `;
     if (activeSettingsTab === SETTINGS_TABS.GENERAL) {
       bindFeedLayoutRangeInputs(panel);
@@ -16703,7 +16713,7 @@
   }
 
   function refreshAiBotLogsPanel() {
-    if (aiBotLogRefreshRunning || activeSettingsTab !== SETTINGS_TABS.AISTATS) {
+    if (aiBotLogRefreshRunning || activeSettingsTab !== SETTINGS_TABS.AIBOT_LOGS) {
       return;
     }
     aiBotLogRefreshRunning = true;
@@ -16727,7 +16737,7 @@
         aiBotReplyQueue = normalizeAiBotReplyQueue(response.values?.[AI_BOT_REPLY_QUEUE_STORAGE_KEY]);
       }
     }).finally(() => {
-      if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+      if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
         const nextLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-logs`);
         const nextMessageLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-message-logs`);
         const nextPendingLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-bot-log-panel="pending"]`);
@@ -16962,15 +16972,22 @@
         return;
       }
 
-      const aiBotViewLogsButton = event.target.closest(".better-settings__ai-bot-view-logs");
-      if (aiBotViewLogsButton && panel.contains(aiBotViewLogsButton)) {
-        setActiveSettingsTab(SETTINGS_TABS.AISTATS);
-        return;
-      }
-
       const aiBotRefreshLogsButton = event.target.closest(".better-settings__ai-bot-refresh-logs");
       if (aiBotRefreshLogsButton && panel.contains(aiBotRefreshLogsButton)) {
         refreshAiBotLogsPanel();
+        return;
+      }
+
+      const replyHistoryPageButton = event.target.closest("[data-reply-history-page]");
+      if (replyHistoryPageButton && panel.contains(replyHistoryPageButton) && !replyHistoryPageButton.disabled) {
+        const totalPages = Math.max(1, Math.ceil(aiBotMessageLogs.length / AI_REPLY_HISTORY_PAGE_SIZE));
+        aiReplyHistoryPage = replyHistoryPageButton.dataset.replyHistoryPage === "next"
+          ? Math.min(aiReplyHistoryPage + 1, totalPages)
+          : Math.max(1, aiReplyHistoryPage - 1);
+        const replyList = panel.querySelector("[data-ai-reply-history-list]");
+        if (replyList) {
+          replyList.innerHTML = renderAiReplyHistoryListHtml(aiBotMessageLogs);
+        }
         return;
       }
 
@@ -17396,7 +17413,7 @@
       SETTINGS_TABS.BLOCKED,
       SETTINGS_TABS.GENERAL,
       SETTINGS_TABS.AI,
-      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AISTATS] : [])
+      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AISTATS, SETTINGS_TABS.AIBOT_LOGS] : [])
     ];
     if (blockedScopes.includes(tab)) {
       activeBlockedKeywordScope = normalizeBlockedKeywordScope(tab);
@@ -17414,8 +17431,8 @@
     button.setAttribute("aria-expanded", "true");
     renderSettingsPanel();
     positionSettingsPanel(panel, button);
-    panel.querySelector(activeSettingsTab === SETTINGS_TABS.AI ? ".better-settings__ai-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT ? ".better-settings__ai-bot-base-url" : (activeSettingsTab === SETTINGS_TABS.GENERAL ? ".better-settings__layout-total-range" : ".better-settings__input")))?.focus();
-    if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+    panel.querySelector(activeSettingsTab === SETTINGS_TABS.AI ? ".better-settings__ai-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT ? ".better-settings__ai-bot-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS ? ".better-settings__ai-bot-refresh-logs" : (activeSettingsTab === SETTINGS_TABS.GENERAL ? ".better-settings__layout-total-range" : ".better-settings__input"))))?.focus();
+    if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
       startAiBotLogAutoRefresh();
     } else {
       stopAiBotLogAutoRefresh();
@@ -19364,7 +19381,7 @@
       }
       if (Object.prototype.hasOwnProperty.call(values, AI_BOT_LOGS_STORAGE_KEY)) {
         aiBotLogs = normalizeAiBotLogs(values[AI_BOT_LOGS_STORAGE_KEY]);
-        if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+        if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
           updateAiBotRuntimeLogList();
         }
       }
@@ -19376,6 +19393,8 @@
           if (replyHistoryList) {
             replyHistoryList.innerHTML = renderAiReplyHistoryListHtml(aiBotMessageLogs);
           }
+        }
+        if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
           loadEmojis().finally(() => {
             const messageLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-message-logs`);
             if (messageLogList) {
@@ -19394,7 +19413,7 @@
       }
       if (Object.prototype.hasOwnProperty.call(values, AI_BOT_REPLY_QUEUE_STORAGE_KEY)) {
         aiBotReplyQueue = normalizeAiBotReplyQueue(values[AI_BOT_REPLY_QUEUE_STORAGE_KEY]);
-        if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+        if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
           loadEmojis().finally(() => {
             const pendingLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-bot-log-panel="pending"]`);
             if (pendingLogList) {

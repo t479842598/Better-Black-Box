@@ -193,7 +193,7 @@
   }
 
   function refreshAiBotLogsPanel() {
-    if (aiBotLogRefreshRunning || activeSettingsTab !== SETTINGS_TABS.AISTATS) {
+    if (aiBotLogRefreshRunning || activeSettingsTab !== SETTINGS_TABS.AIBOT_LOGS) {
       return;
     }
     aiBotLogRefreshRunning = true;
@@ -217,7 +217,7 @@
         aiBotReplyQueue = normalizeAiBotReplyQueue(response.values?.[AI_BOT_REPLY_QUEUE_STORAGE_KEY]);
       }
     }).finally(() => {
-      if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+      if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
         const nextLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-logs`);
         const nextMessageLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-message-logs`);
         const nextPendingLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-bot-log-panel="pending"]`);

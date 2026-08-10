@@ -6362,6 +6362,26 @@
         color: rgba(0, 0, 0, 0.55);
         margin-bottom: 6px;
       }
+
+      /* ===== 回复记录分页 ===== */
+      .${SETTINGS_PANEL_CLASS} .better-settings__pagination {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 10px 0 2px;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__pagination .better-settings__text-button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__pagination-info {
+        color: #8a9299;
+        font-size: 12px;
+        line-height: 18px;
+      }
       .${SETTINGS_PANEL_CLASS} .better-settings__ai-history-list {
         border: 1px solid rgba(0, 0, 0, 0.08);
         border-radius: 10px;

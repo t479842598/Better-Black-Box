@@ -291,9 +291,6 @@
               <textarea class="better-settings__textarea better-settings__ai-bot-feed-comment-prompt">${escapeHtml(aiBotSettings.feedCommentPrompt)}</textarea>
             </div>
           </details>
-          <div class="better-settings__actions">
-            <button class="better-settings__primary better-settings__ai-bot-view-logs" type="button">查看运行日志</button>
-          </div>
         </div>
       </div>
     `;
