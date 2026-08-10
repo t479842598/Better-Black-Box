@@ -293,6 +293,35 @@
     }
   }
 
+  function renderAiBotLogSectionHtml() {
+    return `
+      <div class="better-settings__field-title better-settings__ai-bot-log-title">
+        <span class="better-settings__section-title">运行日志</span>
+        <button class="better-settings__text-button better-settings__ai-bot-clear-logs" type="button">清空日志</button>
+      </div>
+      <div class="better-settings__log-switch" role="tablist" aria-label="AI Bot 日志类型">
+        <button class="better-settings__log-switch-button${activeAiBotLogView === "runtime" ? " is-active" : ""}" type="button" data-ai-bot-log-view="runtime" role="tab" aria-selected="${activeAiBotLogView === "runtime" ? "true" : "false"}">运行日志</button>
+        <button class="better-settings__log-switch-button${activeAiBotLogView === "message" ? " is-active" : ""}" type="button" data-ai-bot-log-view="message" role="tab" aria-selected="${activeAiBotLogView === "message" ? "true" : "false"}">消息日志</button>
+        <button class="better-settings__log-switch-button${activeAiBotLogView === "pending" ? " is-active" : ""}" type="button" data-ai-bot-log-view="pending" role="tab" aria-selected="${activeAiBotLogView === "pending" ? "true" : "false"}">待处理消息</button>
+      </div>
+      <div class="better-settings__ai-bot-message-filter" data-ai-bot-message-filter${activeAiBotLogView === "message" ? "" : " hidden"}>
+        ${[
+          ["all", "全部"],
+          ["mention", "@ 消息"],
+          ["comment", "评论/回复"],
+          ["feed", "首页推荐帖"]
+        ].map(([value, label]) => `<button class="better-settings__ai-bot-message-filter-button${activeAiBotMessageLogFilter === value ? " is-active" : ""}" type="button" data-ai-bot-message-filter-value="${value}">${label}</button>`).join("")}
+      </div>
+      <div class="better-settings__ai-bot-logs" data-ai-bot-log-panel="runtime" data-signature="${escapeHtml(getAiBotLogListSignature(aiBotLogs))}"${activeAiBotLogView === "runtime" ? "" : " hidden"}>${renderAiBotLogItemsHtml()}</div>
+      <div class="better-settings__ai-bot-message-logs" data-ai-bot-log-panel="message" data-signature="${escapeHtml(getAiBotMessageLogSignature())}"${activeAiBotLogView === "message" ? "" : " hidden"}>${renderAiBotMessageLogItemsHtml()}</div>
+      <div class="better-settings__ai-bot-message-logs" data-ai-bot-log-panel="pending" data-signature="${escapeHtml(`${aiBotReplyQueue.length}:${aiBotReplyQueue.slice(0, 5).map((item) => String(item?.messageId || item?.queuedAt || "")).join("|")}`)}"${activeAiBotLogView === "pending" ? "" : " hidden"}>${renderAiBotReplyQueueItemsHtml()}</div>
+      <div class="better-settings__actions">
+        <button class="better-settings__primary better-settings__ai-bot-refresh-logs" type="button">刷新日志</button>
+        <span class="better-settings__message" role="status">日志已加载</span>
+      </div>
+    `;
+  }
+
   function renderAiBotStatsPanelContent() {
     const stats = getAiBotTodayStats();
     const overall = getAiBotOverallStats();
@@ -376,49 +405,7 @@
             <div class="better-settings__ai-history-title">回复记录</div>
             <div class="better-settings__ai-history-list" data-ai-reply-history-list>加载中…</div>
           </div>
-          <div class="better-settings__actions">
-            <button class="better-settings__text-button better-settings__ai-bot-view-logs" type="button">查看详细日志</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderAiBotLogsPanelContent() {
-    return `
-      <div class="better-settings__section better-settings__ai-section">
-        <div class="better-settings__ai-header">
-          <div>
-            <div class="better-settings__ai-title">AI Bot 运行日志</div>
-            <div class="better-settings__ai-subtitle">动态读取本地运行记录</div>
-          </div>
-        </div>
-        <div class="better-settings__ai-body">
-          <div class="better-settings__field-title better-settings__ai-bot-log-title">
-            <button class="better-settings__text-button better-settings__ai-bot-back-settings" type="button">返回设置</button>
-            <button class="better-settings__text-button better-settings__ai-bot-clear-logs" type="button">清空日志</button>
-          </div>
-          ${renderAiBotTodayStatsHtml()}
-          <div class="better-settings__log-switch" role="tablist" aria-label="AI Bot 日志类型">
-            <button class="better-settings__log-switch-button${activeAiBotLogView === "runtime" ? " is-active" : ""}" type="button" data-ai-bot-log-view="runtime" role="tab" aria-selected="${activeAiBotLogView === "runtime" ? "true" : "false"}">运行日志</button>
-            <button class="better-settings__log-switch-button${activeAiBotLogView === "message" ? " is-active" : ""}" type="button" data-ai-bot-log-view="message" role="tab" aria-selected="${activeAiBotLogView === "message" ? "true" : "false"}">消息日志</button>
-            <button class="better-settings__log-switch-button${activeAiBotLogView === "pending" ? " is-active" : ""}" type="button" data-ai-bot-log-view="pending" role="tab" aria-selected="${activeAiBotLogView === "pending" ? "true" : "false"}">待处理消息</button>
-          </div>
-          <div class="better-settings__ai-bot-message-filter" data-ai-bot-message-filter${activeAiBotLogView === "message" ? "" : " hidden"}>
-            ${[
-              ["all", "全部"],
-              ["mention", "@ 消息"],
-              ["comment", "评论/回复"],
-              ["feed", "首页推荐帖"]
-            ].map(([value, label]) => `<button class="better-settings__ai-bot-message-filter-button${activeAiBotMessageLogFilter === value ? " is-active" : ""}" type="button" data-ai-bot-message-filter-value="${value}">${label}</button>`).join("")}
-          </div>
-          <div class="better-settings__ai-bot-logs" data-ai-bot-log-panel="runtime" data-signature="${escapeHtml(getAiBotLogListSignature(aiBotLogs))}"${activeAiBotLogView === "runtime" ? "" : " hidden"}>${renderAiBotLogItemsHtml()}</div>
-          <div class="better-settings__ai-bot-message-logs" data-ai-bot-log-panel="message" data-signature="${escapeHtml(getAiBotMessageLogSignature())}"${activeAiBotLogView === "message" ? "" : " hidden"}>${renderAiBotMessageLogItemsHtml()}</div>
-          <div class="better-settings__ai-bot-message-logs" data-ai-bot-log-panel="pending" data-signature="${escapeHtml(`${aiBotReplyQueue.length}:${aiBotReplyQueue.slice(0, 5).map((item) => String(item?.messageId || item?.queuedAt || "")).join("|")}`)}"${activeAiBotLogView === "pending" ? "" : " hidden"}>${renderAiBotReplyQueueItemsHtml()}</div>
-          <div class="better-settings__actions">
-            <button class="better-settings__primary better-settings__ai-bot-refresh-logs" type="button">刷新日志</button>
-            <span class="better-settings__message" role="status">日志已加载</span>
-          </div>
+          ${renderAiBotLogSectionHtml()}
         </div>
       </div>
     `;

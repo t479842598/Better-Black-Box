@@ -257,14 +257,18 @@
       }
       if (Object.prototype.hasOwnProperty.call(values, AI_BOT_LOGS_STORAGE_KEY)) {
         aiBotLogs = normalizeAiBotLogs(values[AI_BOT_LOGS_STORAGE_KEY]);
-        if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+        if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
           updateAiBotRuntimeLogList();
         }
       }
       if (Object.prototype.hasOwnProperty.call(values, AI_BOT_MESSAGE_LOGS_STORAGE_KEY)) {
         aiBotMessageLogs = normalizeAiBotMessageLogs(values[AI_BOT_MESSAGE_LOGS_STORAGE_KEY]);
-        if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+        if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
           refreshAiBotTodayStatsPanel();
+          const replyHistoryList = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-reply-history-list]`);
+          if (replyHistoryList) {
+            replyHistoryList.innerHTML = renderAiReplyHistoryListHtml(aiBotMessageLogs);
+          }
           loadEmojis().finally(() => {
             const messageLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-message-logs`);
             if (messageLogList) {
@@ -283,7 +287,7 @@
       }
       if (Object.prototype.hasOwnProperty.call(values, AI_BOT_REPLY_QUEUE_STORAGE_KEY)) {
         aiBotReplyQueue = normalizeAiBotReplyQueue(values[AI_BOT_REPLY_QUEUE_STORAGE_KEY]);
-        if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+        if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
           loadEmojis().finally(() => {
             const pendingLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-bot-log-panel="pending"]`);
             if (pendingLogList) {

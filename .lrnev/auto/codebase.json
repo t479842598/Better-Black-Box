@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-10T02:58:28.848Z",
+  "analyzer": "AutoAnalyzer",
+  "project_root": "/Volumes/1T 原装/项目研发/better-xiaoheihe",
+  "tech_stack": [],
+  "primary_language": "javascript",
+  "package_managers": [],
+  "dependencies": {},
+  "directories": [
+    {
+      "path": "_locales",
+      "kind": "other"
+    },
+    {
+      "path": ".reasonix",
+      "kind": "other"
+    },
+    {
+      "path": "assets",
+      "kind": "other"
+    },
+    {
+      "path": "doc",
+      "kind": "docs"
+    },
+    {
+      "path": "scripts",
+      "kind": "config"
+    },
+    {
+      "path": "src",
+      "kind": "source"
+    }
+  ],
+  "root_files": [
+    ".gitignore",
+    "CHANGELOG.md",
+    "CHROME_STORE.md",
+    "FIREFOX_ADAPTATION.md",
+    "PRIVACY.md",
+    "README.md",
+    "manifest-firefox.json",
+    "manifest.json"
+  ],
+  "sample_files": [
+    "src/ai-bridge.js",
+    "src/ai-bridge/bridge.js",
+    "src/background.js",
+    "src/background/ai-bot-api.js",
+    "src/background/ai-bot-compose.js",
+    "src/background/ai-bot-data.js",
+    "src/background/ai-bot-processor.js",
+    "src/background/ai-bot-queue.js",
+    "src/background/ai-bot-runtime.js",
+    "src/background/ai-service.js",
+    "src/background/dnr-rules.js",
+    "src/background/mention-notify.js",
+    "src/background/runtime.js",
+    "src/background/state.js",
+    "src/background/xiaoheihe-api.js",
+    "src/content.js",
+    "src/content/account-bar.js",
+    "src/content/ai-bot-actions.js",
+    "src/content/ai-bot-log-panel.js",
+    "src/content/ai-settings-actions.js"
+  ],
+  "notes": [
+    "该分析不调用 LLM / embedding，只做确定性文件探测。",
+    "请 AI 抽样阅读 sample_files 后补充 coding_style / architecture_notes 字段。",
+    "未确定性识别技术栈（非 JS/Py/Rust/Go 生态，属预期，不是探测失败）。请按 root_files 列出的构建文件（如 pom.xml/build.gradle）由 AI 识别技术栈与架构，写入 ARCHITECTURE.md / PROJECT.md。"
+  ]
+}

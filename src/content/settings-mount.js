@@ -130,12 +130,6 @@
         return;
       }
 
-      const readLaterExportButton = event.target.closest(".better-settings__read-later-export");
-      if (readLaterExportButton && panel.contains(readLaterExportButton)) {
-        readReadLaterItems().then((items) => exportReadLaterMarkdown(items));
-        return;
-      }
-
       const readLaterClearButton = event.target.closest(".better-settings__read-later-clear");
       if (readLaterClearButton && panel.contains(readLaterClearButton)) {
         writeReadLaterItems([]).then(() => refreshReadLaterList(panel));
@@ -191,18 +185,6 @@
       const aiBotRunNowButton = event.target.closest(".better-settings__ai-bot-run-now");
       if (aiBotRunNowButton && panel.contains(aiBotRunNowButton)) {
         runAiBotFromPanel(panel, aiBotRunNowButton);
-        return;
-      }
-
-      const aiBotViewLogsButton = event.target.closest(".better-settings__ai-bot-view-logs");
-      if (aiBotViewLogsButton && panel.contains(aiBotViewLogsButton)) {
-        setActiveSettingsTab(SETTINGS_TABS.AIBOT_LOGS);
-        return;
-      }
-
-      const aiBotBackSettingsButton = event.target.closest(".better-settings__ai-bot-back-settings");
-      if (aiBotBackSettingsButton && panel.contains(aiBotBackSettingsButton)) {
-        setActiveSettingsTab(SETTINGS_TABS.AIBOT);
         return;
       }
 
@@ -634,7 +616,7 @@
       SETTINGS_TABS.BLOCKED,
       SETTINGS_TABS.GENERAL,
       SETTINGS_TABS.AI,
-      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AIBOT_LOGS] : [])
+      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AISTATS] : [])
     ];
     if (blockedScopes.includes(tab)) {
       activeBlockedKeywordScope = normalizeBlockedKeywordScope(tab);
@@ -652,8 +634,8 @@
     button.setAttribute("aria-expanded", "true");
     renderSettingsPanel();
     positionSettingsPanel(panel, button);
-    panel.querySelector(activeSettingsTab === SETTINGS_TABS.AI ? ".better-settings__ai-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT ? ".better-settings__ai-bot-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS ? ".better-settings__ai-bot-refresh-logs" : (activeSettingsTab === SETTINGS_TABS.GENERAL ? ".better-settings__layout-total-range" : ".better-settings__input"))))?.focus();
-    if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+    panel.querySelector(activeSettingsTab === SETTINGS_TABS.AI ? ".better-settings__ai-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT ? ".better-settings__ai-bot-base-url" : (activeSettingsTab === SETTINGS_TABS.GENERAL ? ".better-settings__layout-total-range" : ".better-settings__input")))?.focus();
+    if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
       startAiBotLogAutoRefresh();
     } else {
       stopAiBotLogAutoRefresh();

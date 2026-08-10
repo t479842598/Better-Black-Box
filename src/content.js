@@ -300,7 +300,6 @@
     GENERAL: "general",
     AI: "ai",
     AIBOT: "aibot",
-    AIBOT_LOGS: "aibot-logs",
     AISTATS: "aistats"
   };
   const COMMENT_PREVIEW_SORTS = {
@@ -7459,6 +7458,32 @@
         margin-top: 10px;
       }
 
+      .${SETTINGS_PANEL_CLASS} .better-settings__mention-notify-toggle {
+        display: inline-flex;
+        flex: 0 0 auto;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__mention-notify-toggle[aria-checked="true"] .better-settings__level-switch {
+        background: #2775d1;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__mention-notify-toggle[aria-checked="true"] .better-settings__level-switch::after {
+        transform: translateX(20px);
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__mention-notify-toggle:focus-visible {
+        outline: none;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__mention-notify-toggle:focus-visible .better-settings__level-switch {
+        outline: 2px solid rgba(39, 117, 209, 0.35);
+        outline-offset: 2px;
+      }
+
       /* ===== 关键词高亮 ===== */
       .${SETTINGS_PANEL_CLASS} .better-highlight-mark,
       mark.better-highlight-mark {
@@ -14168,7 +14193,6 @@
         <div class="better-settings__section-title">稍后读</div>
         <div class="better-settings__desc">信息流卡片上的“稍后读”按钮收藏的帖子。</div>
         <div class="better-settings__read-later-actions">
-          <button class="better-settings__text-button better-settings__read-later-export" type="button">导出 Markdown</button>
           <button class="better-settings__text-button better-settings__read-later-clear" type="button">清空列表</button>
         </div>
         <div class="better-settings__read-later-list" data-read-later-list>加载中…</div>
@@ -14196,27 +14220,6 @@
     }
     const items = await readReadLaterItems();
     list.innerHTML = renderReadLaterListHtml(items);
-  }
-
-  function exportReadLaterMarkdown(items) {
-    const lines = [
-      "# 稍后读收藏",
-      "",
-      `共 ${items.length} 条 · 导出时间 ${new Date().toLocaleString("zh-CN", { hour12: false })}`,
-      ""
-    ];
-    items.forEach((item, index) => {
-      lines.push(`${index + 1}. [${item.title || item.linkId}](${item.url || ""})`);
-    });
-    const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `better-xiaoheihe-read-later-${new Date().toISOString().slice(0, 10)}.md`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
   // END src\content\read-later.js
   // BEGIN src\content\comment-draft.js
@@ -14350,7 +14353,7 @@
       SETTINGS_TABS.BLOCKED,
       SETTINGS_TABS.GENERAL,
       SETTINGS_TABS.AI,
-      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AIBOT_LOGS, SETTINGS_TABS.AISTATS] : [])
+      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AISTATS] : [])
     ];
     if (blockedScopes.includes(tab)) {
       activeBlockedKeywordScope = normalizeBlockedKeywordScope(tab);
@@ -14359,9 +14362,9 @@
       activeSettingsTab = standaloneTabs.includes(tab) ? tab : SETTINGS_TABS.GENERAL;
     }
     renderSettingsPanel();
-    if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+    if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
       loadEmojis().then(() => {
-        if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+        if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
           refreshAiBotLogsPanel();
         }
       });
@@ -14915,9 +14918,6 @@
               <textarea class="better-settings__textarea better-settings__ai-bot-feed-comment-prompt">${escapeHtml(aiBotSettings.feedCommentPrompt)}</textarea>
             </div>
           </details>
-          <div class="better-settings__actions">
-            <button class="better-settings__primary better-settings__ai-bot-view-logs" type="button">查看运行日志</button>
-          </div>
         </div>
       </div>
     `;
@@ -15667,6 +15667,35 @@
     }
   }
 
+  function renderAiBotLogSectionHtml() {
+    return `
+      <div class="better-settings__field-title better-settings__ai-bot-log-title">
+        <span class="better-settings__section-title">运行日志</span>
+        <button class="better-settings__text-button better-settings__ai-bot-clear-logs" type="button">清空日志</button>
+      </div>
+      <div class="better-settings__log-switch" role="tablist" aria-label="AI Bot 日志类型">
+        <button class="better-settings__log-switch-button${activeAiBotLogView === "runtime" ? " is-active" : ""}" type="button" data-ai-bot-log-view="runtime" role="tab" aria-selected="${activeAiBotLogView === "runtime" ? "true" : "false"}">运行日志</button>
+        <button class="better-settings__log-switch-button${activeAiBotLogView === "message" ? " is-active" : ""}" type="button" data-ai-bot-log-view="message" role="tab" aria-selected="${activeAiBotLogView === "message" ? "true" : "false"}">消息日志</button>
+        <button class="better-settings__log-switch-button${activeAiBotLogView === "pending" ? " is-active" : ""}" type="button" data-ai-bot-log-view="pending" role="tab" aria-selected="${activeAiBotLogView === "pending" ? "true" : "false"}">待处理消息</button>
+      </div>
+      <div class="better-settings__ai-bot-message-filter" data-ai-bot-message-filter${activeAiBotLogView === "message" ? "" : " hidden"}>
+        ${[
+          ["all", "全部"],
+          ["mention", "@ 消息"],
+          ["comment", "评论/回复"],
+          ["feed", "首页推荐帖"]
+        ].map(([value, label]) => `<button class="better-settings__ai-bot-message-filter-button${activeAiBotMessageLogFilter === value ? " is-active" : ""}" type="button" data-ai-bot-message-filter-value="${value}">${label}</button>`).join("")}
+      </div>
+      <div class="better-settings__ai-bot-logs" data-ai-bot-log-panel="runtime" data-signature="${escapeHtml(getAiBotLogListSignature(aiBotLogs))}"${activeAiBotLogView === "runtime" ? "" : " hidden"}>${renderAiBotLogItemsHtml()}</div>
+      <div class="better-settings__ai-bot-message-logs" data-ai-bot-log-panel="message" data-signature="${escapeHtml(getAiBotMessageLogSignature())}"${activeAiBotLogView === "message" ? "" : " hidden"}>${renderAiBotMessageLogItemsHtml()}</div>
+      <div class="better-settings__ai-bot-message-logs" data-ai-bot-log-panel="pending" data-signature="${escapeHtml(`${aiBotReplyQueue.length}:${aiBotReplyQueue.slice(0, 5).map((item) => String(item?.messageId || item?.queuedAt || "")).join("|")}`)}"${activeAiBotLogView === "pending" ? "" : " hidden"}>${renderAiBotReplyQueueItemsHtml()}</div>
+      <div class="better-settings__actions">
+        <button class="better-settings__primary better-settings__ai-bot-refresh-logs" type="button">刷新日志</button>
+        <span class="better-settings__message" role="status">日志已加载</span>
+      </div>
+    `;
+  }
+
   function renderAiBotStatsPanelContent() {
     const stats = getAiBotTodayStats();
     const overall = getAiBotOverallStats();
@@ -15750,49 +15779,7 @@
             <div class="better-settings__ai-history-title">回复记录</div>
             <div class="better-settings__ai-history-list" data-ai-reply-history-list>加载中…</div>
           </div>
-          <div class="better-settings__actions">
-            <button class="better-settings__text-button better-settings__ai-bot-view-logs" type="button">查看详细日志</button>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  function renderAiBotLogsPanelContent() {
-    return `
-      <div class="better-settings__section better-settings__ai-section">
-        <div class="better-settings__ai-header">
-          <div>
-            <div class="better-settings__ai-title">AI Bot 运行日志</div>
-            <div class="better-settings__ai-subtitle">动态读取本地运行记录</div>
-          </div>
-        </div>
-        <div class="better-settings__ai-body">
-          <div class="better-settings__field-title better-settings__ai-bot-log-title">
-            <button class="better-settings__text-button better-settings__ai-bot-back-settings" type="button">返回设置</button>
-            <button class="better-settings__text-button better-settings__ai-bot-clear-logs" type="button">清空日志</button>
-          </div>
-          ${renderAiBotTodayStatsHtml()}
-          <div class="better-settings__log-switch" role="tablist" aria-label="AI Bot 日志类型">
-            <button class="better-settings__log-switch-button${activeAiBotLogView === "runtime" ? " is-active" : ""}" type="button" data-ai-bot-log-view="runtime" role="tab" aria-selected="${activeAiBotLogView === "runtime" ? "true" : "false"}">运行日志</button>
-            <button class="better-settings__log-switch-button${activeAiBotLogView === "message" ? " is-active" : ""}" type="button" data-ai-bot-log-view="message" role="tab" aria-selected="${activeAiBotLogView === "message" ? "true" : "false"}">消息日志</button>
-            <button class="better-settings__log-switch-button${activeAiBotLogView === "pending" ? " is-active" : ""}" type="button" data-ai-bot-log-view="pending" role="tab" aria-selected="${activeAiBotLogView === "pending" ? "true" : "false"}">待处理消息</button>
-          </div>
-          <div class="better-settings__ai-bot-message-filter" data-ai-bot-message-filter${activeAiBotLogView === "message" ? "" : " hidden"}>
-            ${[
-              ["all", "全部"],
-              ["mention", "@ 消息"],
-              ["comment", "评论/回复"],
-              ["feed", "首页推荐帖"]
-            ].map(([value, label]) => `<button class="better-settings__ai-bot-message-filter-button${activeAiBotMessageLogFilter === value ? " is-active" : ""}" type="button" data-ai-bot-message-filter-value="${value}">${label}</button>`).join("")}
-          </div>
-          <div class="better-settings__ai-bot-logs" data-ai-bot-log-panel="runtime" data-signature="${escapeHtml(getAiBotLogListSignature(aiBotLogs))}"${activeAiBotLogView === "runtime" ? "" : " hidden"}>${renderAiBotLogItemsHtml()}</div>
-          <div class="better-settings__ai-bot-message-logs" data-ai-bot-log-panel="message" data-signature="${escapeHtml(getAiBotMessageLogSignature())}"${activeAiBotLogView === "message" ? "" : " hidden"}>${renderAiBotMessageLogItemsHtml()}</div>
-          <div class="better-settings__ai-bot-message-logs" data-ai-bot-log-panel="pending" data-signature="${escapeHtml(`${aiBotReplyQueue.length}:${aiBotReplyQueue.slice(0, 5).map((item) => String(item?.messageId || item?.queuedAt || "")).join("|")}`)}"${activeAiBotLogView === "pending" ? "" : " hidden"}>${renderAiBotReplyQueueItemsHtml()}</div>
-          <div class="better-settings__actions">
-            <button class="better-settings__primary better-settings__ai-bot-refresh-logs" type="button">刷新日志</button>
-            <span class="better-settings__message" role="status">日志已加载</span>
-          </div>
+          ${renderAiBotLogSectionHtml()}
         </div>
       </div>
     `;
@@ -15982,6 +15969,7 @@
         </div>
         <button class="better-settings__text-button better-settings__layout-reset" type="button">恢复默认值</button>
       </div>
+      ${renderThemeSettingsContent()}
       <details class="better-settings__section better-settings__collapsible-section better-settings__extra-section">
         <summary class="better-settings__collapsible-summary">
           <span class="better-settings__section-title">更多设置</span>
@@ -16022,7 +16010,6 @@
         <textarea class="better-settings__textarea better-settings__highlight-keywords" placeholder="例如：折扣 攻略 避雷">${escapeHtml(highlightKeywords.join("\n"))}</textarea>
       </div>
       ${renderReadLaterSettingsContent()}
-      ${renderThemeSettingsContent()}
         </div>
       </details>
 
@@ -16086,9 +16073,7 @@
           ? renderFeedLayoutSettingsPanelContent()
           : (activeSettingsTab === SETTINGS_TABS.AIBOT
             ? renderAiBotSettingsPanelContent()
-            : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS
-              ? renderAiBotLogsPanelContent()
-              : (activeSettingsTab === SETTINGS_TABS.AISTATS ? renderAiBotStatsPanelContent() : renderBlockedSettingsPanelContent()))))}
+            : (activeSettingsTab === SETTINGS_TABS.AISTATS ? renderAiBotStatsPanelContent() : renderBlockedSettingsPanelContent())))}
     `;
     if (activeSettingsTab === SETTINGS_TABS.GENERAL) {
       bindFeedLayoutRangeInputs(panel);
@@ -16728,7 +16713,7 @@
   }
 
   function refreshAiBotLogsPanel() {
-    if (aiBotLogRefreshRunning || activeSettingsTab !== SETTINGS_TABS.AIBOT_LOGS) {
+    if (aiBotLogRefreshRunning || activeSettingsTab !== SETTINGS_TABS.AISTATS) {
       return;
     }
     aiBotLogRefreshRunning = true;
@@ -16752,7 +16737,7 @@
         aiBotReplyQueue = normalizeAiBotReplyQueue(response.values?.[AI_BOT_REPLY_QUEUE_STORAGE_KEY]);
       }
     }).finally(() => {
-      if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+      if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
         const nextLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-logs`);
         const nextMessageLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-message-logs`);
         const nextPendingLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-bot-log-panel="pending"]`);
@@ -16929,12 +16914,6 @@
         return;
       }
 
-      const readLaterExportButton = event.target.closest(".better-settings__read-later-export");
-      if (readLaterExportButton && panel.contains(readLaterExportButton)) {
-        readReadLaterItems().then((items) => exportReadLaterMarkdown(items));
-        return;
-      }
-
       const readLaterClearButton = event.target.closest(".better-settings__read-later-clear");
       if (readLaterClearButton && panel.contains(readLaterClearButton)) {
         writeReadLaterItems([]).then(() => refreshReadLaterList(panel));
@@ -16990,18 +16969,6 @@
       const aiBotRunNowButton = event.target.closest(".better-settings__ai-bot-run-now");
       if (aiBotRunNowButton && panel.contains(aiBotRunNowButton)) {
         runAiBotFromPanel(panel, aiBotRunNowButton);
-        return;
-      }
-
-      const aiBotViewLogsButton = event.target.closest(".better-settings__ai-bot-view-logs");
-      if (aiBotViewLogsButton && panel.contains(aiBotViewLogsButton)) {
-        setActiveSettingsTab(SETTINGS_TABS.AIBOT_LOGS);
-        return;
-      }
-
-      const aiBotBackSettingsButton = event.target.closest(".better-settings__ai-bot-back-settings");
-      if (aiBotBackSettingsButton && panel.contains(aiBotBackSettingsButton)) {
-        setActiveSettingsTab(SETTINGS_TABS.AIBOT);
         return;
       }
 
@@ -17433,7 +17400,7 @@
       SETTINGS_TABS.BLOCKED,
       SETTINGS_TABS.GENERAL,
       SETTINGS_TABS.AI,
-      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AIBOT_LOGS] : [])
+      ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AISTATS] : [])
     ];
     if (blockedScopes.includes(tab)) {
       activeBlockedKeywordScope = normalizeBlockedKeywordScope(tab);
@@ -17451,8 +17418,8 @@
     button.setAttribute("aria-expanded", "true");
     renderSettingsPanel();
     positionSettingsPanel(panel, button);
-    panel.querySelector(activeSettingsTab === SETTINGS_TABS.AI ? ".better-settings__ai-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT ? ".better-settings__ai-bot-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS ? ".better-settings__ai-bot-refresh-logs" : (activeSettingsTab === SETTINGS_TABS.GENERAL ? ".better-settings__layout-total-range" : ".better-settings__input"))))?.focus();
-    if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+    panel.querySelector(activeSettingsTab === SETTINGS_TABS.AI ? ".better-settings__ai-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT ? ".better-settings__ai-bot-base-url" : (activeSettingsTab === SETTINGS_TABS.GENERAL ? ".better-settings__layout-total-range" : ".better-settings__input")))?.focus();
+    if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
       startAiBotLogAutoRefresh();
     } else {
       stopAiBotLogAutoRefresh();
@@ -19401,14 +19368,18 @@
       }
       if (Object.prototype.hasOwnProperty.call(values, AI_BOT_LOGS_STORAGE_KEY)) {
         aiBotLogs = normalizeAiBotLogs(values[AI_BOT_LOGS_STORAGE_KEY]);
-        if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+        if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
           updateAiBotRuntimeLogList();
         }
       }
       if (Object.prototype.hasOwnProperty.call(values, AI_BOT_MESSAGE_LOGS_STORAGE_KEY)) {
         aiBotMessageLogs = normalizeAiBotMessageLogs(values[AI_BOT_MESSAGE_LOGS_STORAGE_KEY]);
-        if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+        if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
           refreshAiBotTodayStatsPanel();
+          const replyHistoryList = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-reply-history-list]`);
+          if (replyHistoryList) {
+            replyHistoryList.innerHTML = renderAiReplyHistoryListHtml(aiBotMessageLogs);
+          }
           loadEmojis().finally(() => {
             const messageLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-message-logs`);
             if (messageLogList) {
@@ -19427,7 +19398,7 @@
       }
       if (Object.prototype.hasOwnProperty.call(values, AI_BOT_REPLY_QUEUE_STORAGE_KEY)) {
         aiBotReplyQueue = normalizeAiBotReplyQueue(values[AI_BOT_REPLY_QUEUE_STORAGE_KEY]);
-        if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+        if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
           loadEmojis().finally(() => {
             const pendingLogList = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-bot-log-panel="pending"]`);
             if (pendingLogList) {

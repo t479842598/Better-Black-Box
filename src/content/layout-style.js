@@ -6226,6 +6226,32 @@
         margin-top: 10px;
       }
 
+      .${SETTINGS_PANEL_CLASS} .better-settings__mention-notify-toggle {
+        display: inline-flex;
+        flex: 0 0 auto;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        cursor: pointer;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__mention-notify-toggle[aria-checked="true"] .better-settings__level-switch {
+        background: #2775d1;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__mention-notify-toggle[aria-checked="true"] .better-settings__level-switch::after {
+        transform: translateX(20px);
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__mention-notify-toggle:focus-visible {
+        outline: none;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__mention-notify-toggle:focus-visible .better-settings__level-switch {
+        outline: 2px solid rgba(39, 117, 209, 0.35);
+        outline-offset: 2px;
+      }
+
       /* ===== 关键词高亮 ===== */
       .${SETTINGS_PANEL_CLASS} .better-highlight-mark,
       mark.better-highlight-mark {

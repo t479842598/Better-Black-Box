@@ -85,6 +85,7 @@
         </div>
         <button class="better-settings__text-button better-settings__layout-reset" type="button">恢复默认值</button>
       </div>
+      ${renderThemeSettingsContent()}
       <details class="better-settings__section better-settings__collapsible-section better-settings__extra-section">
         <summary class="better-settings__collapsible-summary">
           <span class="better-settings__section-title">更多设置</span>
@@ -125,7 +126,6 @@
         <textarea class="better-settings__textarea better-settings__highlight-keywords" placeholder="例如：折扣 攻略 避雷">${escapeHtml(highlightKeywords.join("\n"))}</textarea>
       </div>
       ${renderReadLaterSettingsContent()}
-      ${renderThemeSettingsContent()}
         </div>
       </details>
 
@@ -189,9 +189,7 @@
           ? renderFeedLayoutSettingsPanelContent()
           : (activeSettingsTab === SETTINGS_TABS.AIBOT
             ? renderAiBotSettingsPanelContent()
-            : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS
-              ? renderAiBotLogsPanelContent()
-              : (activeSettingsTab === SETTINGS_TABS.AISTATS ? renderAiBotStatsPanelContent() : renderBlockedSettingsPanelContent()))))}
+            : (activeSettingsTab === SETTINGS_TABS.AISTATS ? renderAiBotStatsPanelContent() : renderBlockedSettingsPanelContent())))}
     `;
     if (activeSettingsTab === SETTINGS_TABS.GENERAL) {
       bindFeedLayoutRangeInputs(panel);

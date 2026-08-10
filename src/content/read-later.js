@@ -99,7 +99,6 @@
         <div class="better-settings__section-title">稍后读</div>
         <div class="better-settings__desc">信息流卡片上的“稍后读”按钮收藏的帖子。</div>
         <div class="better-settings__read-later-actions">
-          <button class="better-settings__text-button better-settings__read-later-export" type="button">导出 Markdown</button>
           <button class="better-settings__text-button better-settings__read-later-clear" type="button">清空列表</button>
         </div>
         <div class="better-settings__read-later-list" data-read-later-list>加载中…</div>
@@ -127,25 +126,4 @@
     }
     const items = await readReadLaterItems();
     list.innerHTML = renderReadLaterListHtml(items);
-  }
-
-  function exportReadLaterMarkdown(items) {
-    const lines = [
-      "# 稍后读收藏",
-      "",
-      `共 ${items.length} 条 · 导出时间 ${new Date().toLocaleString("zh-CN", { hour12: false })}`,
-      ""
-    ];
-    items.forEach((item, index) => {
-      lines.push(`${index + 1}. [${item.title || item.linkId}](${item.url || ""})`);
-    });
-    const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `better-xiaoheihe-read-later-${new Date().toISOString().slice(0, 10)}.md`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
