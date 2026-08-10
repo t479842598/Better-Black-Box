@@ -188,6 +188,12 @@
         return;
       }
 
+      const aiBotViewLogsButton = event.target.closest(".better-settings__ai-bot-view-logs");
+      if (aiBotViewLogsButton && panel.contains(aiBotViewLogsButton)) {
+        setActiveSettingsTab(SETTINGS_TABS.AISTATS);
+        return;
+      }
+
       const aiBotRefreshLogsButton = event.target.closest(".better-settings__ai-bot-refresh-logs");
       if (aiBotRefreshLogsButton && panel.contains(aiBotRefreshLogsButton)) {
         refreshAiBotLogsPanel();

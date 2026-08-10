@@ -6339,19 +6339,6 @@
         margin-left: auto;
       }
 
-      /* ===== Tab 布局：间距与自动换行 ===== */
-      .${SETTINGS_PANEL_CLASS} .better-settings__tabs {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-bottom: 12px;
-      }
-      .${SETTINGS_PANEL_CLASS} .better-settings__tab {
-        flex: 0 1 auto;
-        min-width: 60px;
-        justify-content: center;
-      }
-
       /* ===== 账号栏紧凑布局（仅头像+名称） ===== */
       .${SETTINGS_PANEL_CLASS} .better-settings__account-bar {
         padding: 8px 12px;
