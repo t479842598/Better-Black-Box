@@ -26,6 +26,9 @@
   const API_PARAMS_STORAGE_KEY = "better-xiaoheihe-api-params";
   const UI_STATE_STORAGE_KEY = "better-xiaoheihe-ui-state";
   const COMMENT_EMOJI_USAGE_STORAGE_KEY = "better-xiaoheihe-comment-emoji-usage";
+  // 版本信息：发布时与 manifest.json 的 version 同步更新，用于设置面板顶部展示“已更新”提示。
+  const EXTENSION_VERSION = "1.5";
+  const EXTENSION_BUILD_DATE = "2026-08-12";
   const FEED_LAYOUT_SETTINGS_STORAGE_KEY = "better-xiaoheihe-feed-layout-settings";
   const HOT_SEARCH_DISABLED_STORAGE_KEY = "better-xiaoheihe-hot-search-disabled";
   const ACCOUNT_PROFILE_STORAGE_KEY = "better-xiaoheihe-account-profile";
@@ -3379,6 +3382,32 @@
         padding: 3px;
         border-radius: 8px;
         background: #f3f4f5;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-banner {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+        padding: 6px 10px;
+        border: 1px solid rgba(255, 157, 0, 0.28);
+        border-radius: 8px;
+        background: linear-gradient(90deg, rgba(255, 157, 0, 0.1), rgba(255, 181, 61, 0.06));
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 1px 7px;
+        border-radius: 999px;
+        background: #ff9d00;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 16px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-date {
+        color: rgba(0, 0, 0, 0.55);
+        font-size: 12px;
       }
 
       .${SETTINGS_PANEL_CLASS} .better-settings__tab {
@@ -7368,14 +7397,14 @@
       /* ===== 外观（明暗模式）设置 ===== */
       .${SETTINGS_PANEL_CLASS} .better-settings__theme-options {
         display: flex;
-        gap: 8px;
+        gap: 10px;
         margin-top: 8px;
       }
       .${SETTINGS_PANEL_CLASS} .better-settings__theme-option {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
-        padding: 7px 12px;
+        gap: 8px;
+        padding: 7px 14px;
         border: 1px solid rgba(0, 0, 0, 0.12);
         border-radius: 8px;
         background: transparent;
@@ -15669,7 +15698,8 @@
     const days = getAiBotRecent7Days();
     const maxDayCount = Math.max(1, ...days.map((day) => day.count));
     return `
-      <div class="better-settings__ai-bot-stats" data-ai-bot-today-stats>
+      <div class="better-settings__ai-bot-dashboard" data-ai-bot-today-stats>
+        <div class="better-settings__ai-bot-stats">
         <div class="better-settings__ai-bot-stat">
           <span class="better-settings__ai-bot-stat-label">今天评论帖子</span>
           <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.feedComments)}</span>
@@ -15694,27 +15724,36 @@
           <span class="better-settings__ai-bot-stat-label">发送失败</span>
           <span class="better-settings__ai-bot-stat-value${overall.failed > 0 ? " is-warn" : ""}">${escapeHtml(overall.failed)}</span>
         </div>
-      </div>
-      <div class="better-settings__ai-bot-week" data-ai-bot-week-chart>
-        <div class="better-settings__ai-bot-week-title">最近 7 天回复分布</div>
-        <div class="better-settings__ai-bot-week-bars">
-          ${days.map((day) => `
-            <div class="better-settings__ai-bot-week-col" title="${escapeHtml(day.label)}：${escapeHtml(day.count)} 条">
-              <span class="better-settings__ai-bot-week-bar" style="height: ${Math.max(4, Math.round((day.count / maxDayCount) * 100))}%"></span>
-              <span class="better-settings__ai-bot-week-count">${escapeHtml(day.count)}</span>
-              <span class="better-settings__ai-bot-week-label">${escapeHtml(day.label)}</span>
-            </div>
-          `).join("")}
+        </div>
+        <div class="better-settings__ai-bot-week" data-ai-bot-week-chart>
+          <div class="better-settings__ai-bot-week-title">最近 7 天回复分布</div>
+          <div class="better-settings__ai-bot-week-bars">
+            ${days.map((day) => `
+              <div class="better-settings__ai-bot-week-col" title="${escapeHtml(day.label)}：${escapeHtml(day.count)} 条">
+                <span class="better-settings__ai-bot-week-bar" style="height: ${Math.max(4, Math.round((day.count / maxDayCount) * 100))}%"></span>
+                <span class="better-settings__ai-bot-week-count">${escapeHtml(day.count)}</span>
+                <span class="better-settings__ai-bot-week-label">${escapeHtml(day.label)}</span>
+              </div>
+            `).join("")}
+          </div>
         </div>
       </div>
     `;
   }
 
   function refreshAiBotTodayStatsPanel() {
-    const statsPanel = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-bot-today-stats]`);
-    if (statsPanel) {
-      statsPanel.outerHTML = renderAiBotTodayStatsHtml();
+    const settingsPanel = document.querySelector(`.${SETTINGS_PANEL_CLASS}`);
+    const statsPanel = settingsPanel?.querySelector("[data-ai-bot-today-stats]");
+    if (!statsPanel) {
+      return;
     }
+    // 历史版本刷新时把两块内容整体插入，旧周分布图作为游离兄弟节点残留导致重复，先清理再整体替换
+    settingsPanel.querySelectorAll("[data-ai-bot-week-chart]").forEach((node) => {
+      if (!statsPanel.contains(node)) {
+        node.remove();
+      }
+    });
+    statsPanel.outerHTML = renderAiBotTodayStatsHtml();
   }
 
   function renderAiBotLogSectionHtml() {
@@ -16097,6 +16136,10 @@
     }
 
     panel.innerHTML = `
+      <div class="better-settings__version-banner">
+        <span class="better-settings__version-badge">v${escapeHtml(EXTENSION_VERSION)}</span>
+        <span class="better-settings__version-date">更新于 ${escapeHtml(EXTENSION_BUILD_DATE)}</span>
+      </div>
       <div class="better-settings__tabs" role="tablist" aria-label="设置分类">
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.GENERAL}" aria-selected="${activeSettingsTab === SETTINGS_TABS.GENERAL ? "true" : "false"}">通用</button>
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.BLOCKED}" aria-selected="${activeSettingsTab === SETTINGS_TABS.BLOCKED ? "true" : "false"}">屏蔽</button>

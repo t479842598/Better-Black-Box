@@ -2146,6 +2146,32 @@
         background: #f3f4f5;
       }
 
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-banner {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 10px;
+        padding: 6px 10px;
+        border: 1px solid rgba(255, 157, 0, 0.28);
+        border-radius: 8px;
+        background: linear-gradient(90deg, rgba(255, 157, 0, 0.1), rgba(255, 181, 61, 0.06));
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 1px 7px;
+        border-radius: 999px;
+        background: #ff9d00;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 16px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-date {
+        color: rgba(0, 0, 0, 0.55);
+        font-size: 12px;
+      }
+
       .${SETTINGS_PANEL_CLASS} .better-settings__tab {
         box-sizing: border-box;
         height: 28px;
@@ -6133,14 +6159,14 @@
       /* ===== 外观（明暗模式）设置 ===== */
       .${SETTINGS_PANEL_CLASS} .better-settings__theme-options {
         display: flex;
-        gap: 8px;
+        gap: 10px;
         margin-top: 8px;
       }
       .${SETTINGS_PANEL_CLASS} .better-settings__theme-option {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
-        padding: 7px 12px;
+        gap: 8px;
+        padding: 7px 14px;
         border: 1px solid rgba(0, 0, 0, 0.12);
         border-radius: 8px;
         background: transparent;

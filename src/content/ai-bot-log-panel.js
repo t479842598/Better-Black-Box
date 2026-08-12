@@ -245,7 +245,8 @@
     const days = getAiBotRecent7Days();
     const maxDayCount = Math.max(1, ...days.map((day) => day.count));
     return `
-      <div class="better-settings__ai-bot-stats" data-ai-bot-today-stats>
+      <div class="better-settings__ai-bot-dashboard" data-ai-bot-today-stats>
+        <div class="better-settings__ai-bot-stats">
         <div class="better-settings__ai-bot-stat">
           <span class="better-settings__ai-bot-stat-label">今天评论帖子</span>
           <span class="better-settings__ai-bot-stat-value">${escapeHtml(stats.feedComments)}</span>
@@ -270,27 +271,36 @@
           <span class="better-settings__ai-bot-stat-label">发送失败</span>
           <span class="better-settings__ai-bot-stat-value${overall.failed > 0 ? " is-warn" : ""}">${escapeHtml(overall.failed)}</span>
         </div>
-      </div>
-      <div class="better-settings__ai-bot-week" data-ai-bot-week-chart>
-        <div class="better-settings__ai-bot-week-title">最近 7 天回复分布</div>
-        <div class="better-settings__ai-bot-week-bars">
-          ${days.map((day) => `
-            <div class="better-settings__ai-bot-week-col" title="${escapeHtml(day.label)}：${escapeHtml(day.count)} 条">
-              <span class="better-settings__ai-bot-week-bar" style="height: ${Math.max(4, Math.round((day.count / maxDayCount) * 100))}%"></span>
-              <span class="better-settings__ai-bot-week-count">${escapeHtml(day.count)}</span>
-              <span class="better-settings__ai-bot-week-label">${escapeHtml(day.label)}</span>
-            </div>
-          `).join("")}
+        </div>
+        <div class="better-settings__ai-bot-week" data-ai-bot-week-chart>
+          <div class="better-settings__ai-bot-week-title">最近 7 天回复分布</div>
+          <div class="better-settings__ai-bot-week-bars">
+            ${days.map((day) => `
+              <div class="better-settings__ai-bot-week-col" title="${escapeHtml(day.label)}：${escapeHtml(day.count)} 条">
+                <span class="better-settings__ai-bot-week-bar" style="height: ${Math.max(4, Math.round((day.count / maxDayCount) * 100))}%"></span>
+                <span class="better-settings__ai-bot-week-count">${escapeHtml(day.count)}</span>
+                <span class="better-settings__ai-bot-week-label">${escapeHtml(day.label)}</span>
+              </div>
+            `).join("")}
+          </div>
         </div>
       </div>
     `;
   }
 
   function refreshAiBotTodayStatsPanel() {
-    const statsPanel = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-bot-today-stats]`);
-    if (statsPanel) {
-      statsPanel.outerHTML = renderAiBotTodayStatsHtml();
+    const settingsPanel = document.querySelector(`.${SETTINGS_PANEL_CLASS}`);
+    const statsPanel = settingsPanel?.querySelector("[data-ai-bot-today-stats]");
+    if (!statsPanel) {
+      return;
     }
+    // 历史版本刷新时把两块内容整体插入，旧周分布图作为游离兄弟节点残留导致重复，先清理再整体替换
+    settingsPanel.querySelectorAll("[data-ai-bot-week-chart]").forEach((node) => {
+      if (!statsPanel.contains(node)) {
+        node.remove();
+      }
+    });
+    statsPanel.outerHTML = renderAiBotTodayStatsHtml();
   }
 
   function renderAiBotLogSectionHtml() {

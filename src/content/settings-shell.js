@@ -176,6 +176,10 @@
     }
 
     panel.innerHTML = `
+      <div class="better-settings__version-banner">
+        <span class="better-settings__version-badge">v${escapeHtml(EXTENSION_VERSION)}</span>
+        <span class="better-settings__version-date">更新于 ${escapeHtml(EXTENSION_BUILD_DATE)}</span>
+      </div>
       <div class="better-settings__tabs" role="tablist" aria-label="设置分类">
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.GENERAL}" aria-selected="${activeSettingsTab === SETTINGS_TABS.GENERAL ? "true" : "false"}">通用</button>
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.BLOCKED}" aria-selected="${activeSettingsTab === SETTINGS_TABS.BLOCKED ? "true" : "false"}">屏蔽</button>
