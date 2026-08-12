@@ -6162,6 +6162,9 @@
         gap: 10px;
         margin-top: 8px;
       }
+      .${SETTINGS_PANEL_CLASS} .better-settings__theme-section .better-settings__desc {
+        margin-top: 10px;
+      }
       .${SETTINGS_PANEL_CLASS} .better-settings__theme-option {
         display: inline-flex;
         align-items: center;
