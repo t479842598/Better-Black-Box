@@ -244,12 +244,38 @@
     });
   }
 
+  function refreshAiBotStatsPanelData() {
+    requestLocalSettingsState(1200).then((response) => {
+      if (response?.ok) {
+        aiBotMessageLogs = normalizeAiBotMessageLogs(response.values?.[AI_BOT_MESSAGE_LOGS_STORAGE_KEY]);
+      }
+    }).finally(() => {
+      if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+        refreshAiBotTodayStatsPanel();
+        const replyList = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-reply-history-list]`);
+        if (replyList) {
+          replyList.innerHTML = renderAiReplyHistoryListHtml(aiBotMessageLogs);
+        }
+      }
+    });
+  }
+
   function startAiBotLogAutoRefresh() {
-    refreshAiBotLogsPanel();
+    if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+      refreshAiBotLogsPanel();
+    } else if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+      refreshAiBotStatsPanelData();
+    }
     if (aiBotLogRefreshTimer) {
       return;
     }
-    aiBotLogRefreshTimer = window.setInterval(refreshAiBotLogsPanel, 10000);
+    aiBotLogRefreshTimer = window.setInterval(() => {
+      if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+        refreshAiBotLogsPanel();
+      } else if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+        refreshAiBotStatsPanelData();
+      }
+    }, 10000);
   }
 
   function stopAiBotLogAutoRefresh() {

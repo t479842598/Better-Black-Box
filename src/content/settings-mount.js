@@ -648,7 +648,7 @@
     renderSettingsPanel();
     positionSettingsPanel(panel, button);
     panel.querySelector(activeSettingsTab === SETTINGS_TABS.AI ? ".better-settings__ai-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT ? ".better-settings__ai-bot-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS ? ".better-settings__ai-bot-refresh-logs" : (activeSettingsTab === SETTINGS_TABS.GENERAL ? ".better-settings__layout-total-range" : ".better-settings__input"))))?.focus();
-    if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+    if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS || activeSettingsTab === SETTINGS_TABS.AISTATS) {
       startAiBotLogAutoRefresh();
     } else {
       stopAiBotLogAutoRefresh();

@@ -370,7 +370,10 @@
       };
     }
 
-    await appendAiBotLog("info", `开始处理${typeLabel}，获取帖子详情`, messageDebug);
+    await appendAiBotLog("info", `当前执行中：${typeLabel}，帖子「${messageDebug.linkTitle || messageDebug.linkId || "未知帖子"}」`, {
+      ...messageDebug,
+      actionLabel: "开始处理"
+    });
     let context;
     try {
       context = await fetchLinkContext(linkId, heyboxId);
@@ -490,7 +493,10 @@
       feedCommentNum: feedDetail.commentNum,
       feedUp: feedDetail.up
     };
-    await appendAiBotLog("info", "选中首页推荐帖，获取帖子详情", debugInfo);
+    await appendAiBotLog("info", `当前执行中：评论首页推荐帖「${feedDetail.title || linkId}」`, {
+      ...debugInfo,
+      actionLabel: "获取帖子详情"
+    });
 
     let context;
     try {

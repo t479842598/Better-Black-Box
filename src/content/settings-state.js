@@ -36,6 +36,8 @@
         }
       });
       startAiBotLogAutoRefresh();
+    } else if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
+      startAiBotLogAutoRefresh();
     } else {
       stopAiBotLogAutoRefresh();
     }

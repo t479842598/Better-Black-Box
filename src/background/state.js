@@ -86,7 +86,7 @@
         detail: detail && typeof detail === "object" ? detail : {}
       },
       ...currentLogs.filter((item) => !item?.skipped && Number(item?.timestamp || 0) >= now - AI_BOT_LOG_RETENTION_MS)
-    ].slice(0, 500);
+    ].slice(0, 5000);
     await storageSet({ [AI_BOT_LOGS_STORAGE_KEY]: logs });
   }
 
@@ -104,7 +104,7 @@
         ...entry
       },
       ...currentLogs.filter((item) => Number(item?.timestamp || 0) >= now - AI_BOT_LOG_RETENTION_MS)
-    ].slice(0, 500);
+    ].slice(0, 5000);
     await storageSet({ [AI_BOT_MESSAGE_LOGS_STORAGE_KEY]: logs });
   }
 
