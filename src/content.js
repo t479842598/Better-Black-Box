@@ -4255,6 +4255,10 @@
         gap: 6px;
         margin: 0 0 8px;
       }
+      .${SETTINGS_PANEL_CLASS} [data-ai-bot-message-filter][hidden],
+      .${SETTINGS_PANEL_CLASS} [data-mention-notify-options][hidden] {
+        display: none !important;
+      }
 
       .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-message-filter-button {
         height: 26px;
