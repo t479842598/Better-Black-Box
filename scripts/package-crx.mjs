@@ -1,8 +1,11 @@
 // CRX3 打包脚本（Chrome 扩展 .crx，自签名）。
 // 用法：node scripts/package-crx.mjs <zip路径> <输出crx路径> [--force-new-key]
-// 依赖：项目根 key.pem（不存在时自动生成 RSA-2048 私钥，请自行备份；私钥决定扩展 ID）
+// 私钥决定扩展 ID，请妥善备份。为避免 Chrome 在“加载已解压的扩展程序”时警告项目目录内含私钥文件，
+// 私钥默认存放在项目外 ~/.better-xiaoheihe/key.pem，也可用环境变量 BETTER_XIAOHEIHE_KEY_PEM 指定路径；
+// 仅在外部路径不存在时，才会回退到项目根 key.pem（旧版遗留，会自动迁移到外部路径）。
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -16,7 +19,28 @@ if (!zipPath || !crxPath || !fs.existsSync(zipPath)) {
 }
 
 // ---- 1. 私钥 ----
-const keyPath = path.join(root, 'key.pem');
+// 查找顺序：环境变量指定 > ~/.better-xiaoheihe/key.pem > 项目根 key.pem（旧版遗留）
+function resolveKeyPath() {
+  const fromEnv = process.env.BETTER_XIAOHEIHE_KEY_PEM;
+  if (fromEnv) {
+    return path.resolve(fromEnv);
+  }
+  const external = path.join(os.homedir(), '.better-xiaoheihe', 'key.pem');
+  if (fs.existsSync(external)) {
+    return external;
+  }
+  return path.join(root, 'key.pem');
+}
+
+let keyPath = resolveKeyPath();
+const legacyKeyPath = path.join(root, 'key.pem');
+if (keyPath !== legacyKeyPath && fs.existsSync(legacyKeyPath)) {
+  // 旧版密钥在项目根：迁移到外部路径，避免 Chrome 解压加载警告
+  fs.copyFileSync(legacyKeyPath, keyPath);
+  fs.chmodSync(keyPath, 0o600);
+  fs.rmSync(legacyKeyPath, { force: true });
+  console.log(`已迁移项目根 key.pem 到 ${keyPath}（防止 Chrome 私钥文件警告）`);
+}
 let keyPem;
 if (fs.existsSync(keyPath) && !forceNewKey) {
   keyPem = fs.readFileSync(keyPath, 'utf8');
