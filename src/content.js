@@ -27,7 +27,7 @@
   const UI_STATE_STORAGE_KEY = "better-xiaoheihe-ui-state";
   const COMMENT_EMOJI_USAGE_STORAGE_KEY = "better-xiaoheihe-comment-emoji-usage";
   // 版本信息：发布时与 manifest.json 的 version 同步更新，用于设置面板顶部展示“已更新”提示。
-  const EXTENSION_VERSION = "1.5";
+  const EXTENSION_VERSION = "1.6";
   const EXTENSION_BUILD_DATE = "2026-08-12";
   const FEED_LAYOUT_SETTINGS_STORAGE_KEY = "better-xiaoheihe-feed-layout-settings";
   const HOT_SEARCH_DISABLED_STORAGE_KEY = "better-xiaoheihe-hot-search-disabled";
@@ -403,6 +403,7 @@
   let aiBotLogRefreshRunning = false;
   let activeAiBotLogView = "runtime";
   let activeAiBotMessageLogFilter = "all";
+  let activeAiBotLogLevelFilter = "all";
   const expandedAiBotLogIds = new Set();
   const AI_REPLY_HISTORY_PAGE_SIZE = 10;
   let aiReplyHistoryPage = 1;
@@ -844,6 +845,9 @@
       aiBotMessageLogFilter: ["all", "mention", "comment", "feed"].includes(state?.aiBotMessageLogFilter)
         ? state.aiBotMessageLogFilter
         : "all",
+      aiBotLogLevelFilter: ["all", "success", "error", "warn", "info"].includes(state?.aiBotLogLevelFilter)
+        ? state.aiBotLogLevelFilter
+        : "all",
       aiSummaryWindowLeft: state?.aiSummaryWindowLeft !== null
         && state?.aiSummaryWindowLeft !== undefined
         && Number.isFinite(Number(state.aiSummaryWindowLeft))
@@ -882,6 +886,7 @@
     }
     uiState = normalizedState;
     activeAiBotMessageLogFilter = normalizedState.aiBotMessageLogFilter;
+    activeAiBotLogLevelFilter = normalizedState.aiBotLogLevelFilter;
     renderSettingsPanel();
   }
 
@@ -1140,6 +1145,7 @@
     aiBotSettings = normalizeAiBotSettings(values[AI_BOT_SETTINGS_STORAGE_KEY]);
     uiState = normalizeUiState(values[UI_STATE_STORAGE_KEY]);
     activeAiBotMessageLogFilter = uiState.aiBotMessageLogFilter;
+    activeAiBotLogLevelFilter = uiState.aiBotLogLevelFilter;
     aiBotLogs = normalizeAiBotLogs(values[AI_BOT_LOGS_STORAGE_KEY]);
     aiBotMessageLogs = normalizeAiBotMessageLogs(values[AI_BOT_MESSAGE_LOGS_STORAGE_KEY]);
     aiBotReplyQueue = normalizeAiBotReplyQueue(values[AI_BOT_REPLY_QUEUE_STORAGE_KEY]);
@@ -3409,6 +3415,32 @@
         color: rgba(0, 0, 0, 0.55);
         font-size: 12px;
       }
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-update {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        margin-left: auto;
+        padding: 2px 8px;
+        border: 1px solid #ff9d00;
+        border-radius: 999px;
+        background: #fff;
+        color: #d97b00;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 16px;
+        transition: background 0.15s ease, color 0.15s ease;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-update:hover,
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-update:focus-visible {
+        background: #ff9d00;
+        color: #fff;
+        outline: none;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-update svg {
+        width: 12px;
+        height: 12px;
+      }
 
       .${SETTINGS_PANEL_CLASS} .better-settings__tab {
         box-sizing: border-box;
@@ -4220,6 +4252,30 @@
         margin: 12px 0 8px;
       }
 
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-log-title-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        flex: 0 0 auto;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-log-title-actions .better-settings__primary {
+        height: 26px;
+        padding: 0 10px;
+        font-size: 12px;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-log-status {
+        max-width: 180px;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-log-filter-count {
+        align-self: center;
+        color: #8a9299;
+        font-size: 11px;
+        line-height: 26px;
+      }
+
       .${SETTINGS_PANEL_CLASS} .better-settings__log-switch {
         display: inline-flex;
         gap: 4px;
@@ -4320,6 +4376,10 @@
         border: 1px solid #eef0f2;
         border-radius: 8px;
         background: #fbfcfd;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-log-pagination {
+        margin-top: 8px;
       }
 
       .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-message-logs {
@@ -15598,41 +15658,133 @@
     return `${items.length}:${items.slice(0, 5).map((log) => getAiBotLogId(log)).join("|")}`;
   }
 
+  function renderAiBotLogItemHtml(log) {
+    const logId = getAiBotLogId(log);
+    const detailEntries = Object.entries(log.detail || {})
+      .filter(([, value]) => value !== undefined && value !== null && value !== "");
+    return `
+      <div class="better-settings__ai-bot-log">
+        <div class="better-settings__ai-bot-log-meta">
+          <span class="better-settings__ai-bot-log-level better-settings__ai-bot-log-level--${escapeHtml(log.level || "info")}">${escapeHtml({
+            success: "成功",
+            warn: "提醒",
+            error: "错误",
+            info: "信息"
+          }[log.level] || "信息")}</span>
+          <span>${escapeHtml(log.timeText || new Date(log.timestamp || Date.now()).toLocaleString("zh-CN", { hour12: false }))}</span>
+        </div>
+        <div class="better-settings__ai-bot-log-message">${escapeHtml(log.message || "")}</div>
+        ${detailEntries.length ? (() => {
+          const isExpanded = expandedAiBotLogIds.has(logId);
+          const detailSummary = log.level === "error" ? "展开错误详情" : "展开日志详情";
+          return `
+            <details class="better-settings__ai-bot-log-detail-wrap" data-log-id="${escapeHtml(logId)}"${isExpanded ? " open" : ""}>
+              <summary class="better-settings__ai-bot-log-detail-summary">${detailSummary}</summary>
+              <button class="better-settings__ai-bot-log-copy" type="button">复制</button>
+              <div class="better-settings__ai-bot-log-detail">${isExpanded ? renderAiBotLogDetailRowsHtml(log.detail || {}) : ""}</div>
+            </details>
+          `;
+        })() : ""}
+      </div>
+    `;
+  }
+
+  function getFilteredAiBotLogs() {
+    return activeAiBotLogLevelFilter === "all"
+      ? aiBotLogs
+      : aiBotLogs.filter((log) => String(log?.level || "info") === activeAiBotLogLevelFilter);
+  }
+
+  // ---- 运行日志分页 ----
+  // 每页只渲染固定条数（虚拟列表方案在部分场景下详情展开不稳定，改为简单分页）
+  const AI_BOT_LOG_PAGE_SIZE = 200;
+  let aiBotLogPage = 1;
+
+  function getAiBotLogTotalPages() {
+    return Math.max(1, Math.ceil(getFilteredAiBotLogs().length / AI_BOT_LOG_PAGE_SIZE));
+  }
+
+  function getAiBotLogCurrentPageLogs() {
+    const visibleLogs = getFilteredAiBotLogs();
+    const totalPages = getAiBotLogTotalPages();
+    aiBotLogPage = Math.max(1, Math.min(aiBotLogPage, totalPages));
+    const pageStart = (aiBotLogPage - 1) * AI_BOT_LOG_PAGE_SIZE;
+    return visibleLogs.slice(pageStart, pageStart + AI_BOT_LOG_PAGE_SIZE);
+  }
+
   function renderAiBotLogItemsHtml() {
-    return aiBotLogs.length
-      ? aiBotLogs.map((log) => `
-            ${(() => {
-              const logId = getAiBotLogId(log);
-              const detailEntries = Object.entries(log.detail || {})
-                .filter(([, value]) => value !== undefined && value !== null && value !== "");
-              return `
-            <div class="better-settings__ai-bot-log">
-              <div class="better-settings__ai-bot-log-meta">
-                <span class="better-settings__ai-bot-log-level better-settings__ai-bot-log-level--${escapeHtml(log.level || "info")}">${escapeHtml({
-                  success: "成功",
-                  warn: "提醒",
-                  error: "错误",
-                  info: "信息"
-                }[log.level] || "信息")}</span>
-                <span>${escapeHtml(log.timeText || new Date(log.timestamp || Date.now()).toLocaleString("zh-CN", { hour12: false }))}</span>
-              </div>
-              <div class="better-settings__ai-bot-log-message">${escapeHtml(log.message || "")}</div>
-              ${detailEntries.length ? (() => {
-                const isExpanded = expandedAiBotLogIds.has(logId);
-                const detailSummary = log.level === "error" ? "展开错误详情" : "展开日志详情";
-                return `
-                  <details class="better-settings__ai-bot-log-detail-wrap" data-log-id="${escapeHtml(logId)}"${isExpanded ? " open" : ""}>
-                    <summary class="better-settings__ai-bot-log-detail-summary">${detailSummary}</summary>
-                    <button class="better-settings__ai-bot-log-copy" type="button">复制</button>
-                    <div class="better-settings__ai-bot-log-detail">${isExpanded ? renderAiBotLogDetailRowsHtml(log.detail || {}) : ""}</div>
-                  </details>
-                `;
-              })() : ""}
-            </div>
-              `;
-            })()}
-          `).join("")
-      : `<div class="better-settings__empty">暂无 AI Bot 运行日志</div>`;
+    const pageLogs = getAiBotLogCurrentPageLogs();
+    return pageLogs.length
+      ? pageLogs.map(renderAiBotLogItemHtml).join("")
+      : `<div class="better-settings__empty">${aiBotLogs.length ? "当前筛选无运行日志" : "暂无 AI Bot 运行日志"}</div>`;
+  }
+
+  function renderAiBotLogPaginationHtml() {
+    const visibleCount = getFilteredAiBotLogs().length;
+    if (visibleCount <= AI_BOT_LOG_PAGE_SIZE) {
+      return "";
+    }
+    const totalPages = getAiBotLogTotalPages();
+    return `
+      <div class="better-settings__pagination">
+        <button class="better-settings__text-button" type="button" data-ai-bot-log-page="prev"${aiBotLogPage === 1 ? " disabled" : ""}>上一页</button>
+        <span class="better-settings__pagination-info">第 ${escapeHtml(aiBotLogPage)} / ${escapeHtml(totalPages)} 页 · 共 ${escapeHtml(visibleCount)} 条</span>
+        <button class="better-settings__text-button" type="button" data-ai-bot-log-page="next"${aiBotLogPage === totalPages ? " disabled" : ""}>下一页</button>
+      </div>
+    `;
+  }
+
+  function updateAiBotLogFilterCount() {
+    const countNode = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-bot-log-filter-count]`);
+    if (!countNode) {
+      return;
+    }
+    countNode.textContent = `共 ${getFilteredAiBotLogs().length} 条`;
+  }
+
+  function setAiBotLogPage(panel, direction) {
+    const totalPages = getAiBotLogTotalPages();
+    const nextPage = direction === "next"
+      ? Math.min(aiBotLogPage + 1, totalPages)
+      : Math.max(1, aiBotLogPage - 1);
+    if (nextPage === aiBotLogPage) {
+      return;
+    }
+    aiBotLogPage = nextPage;
+    const logList = panel.querySelector('[data-ai-bot-log-panel="runtime"]');
+    if (logList) {
+      logList.innerHTML = renderAiBotLogItemsHtml();
+      logList.dataset.signature = getAiBotLogListSignature(getAiBotLogCurrentPageLogs());
+      logList.scrollTop = 0;
+    }
+    const pagination = panel.querySelector("[data-ai-bot-log-pagination]");
+    if (pagination) {
+      pagination.innerHTML = renderAiBotLogPaginationHtml();
+    }
+  }
+
+  function setAiBotLogLevelFilter(panel, filter) {
+    activeAiBotLogLevelFilter = ["success", "error", "warn", "info"].includes(filter) ? filter : "all";
+    uiState = normalizeUiState({
+      ...uiState,
+      aiBotLogLevelFilter: activeAiBotLogLevelFilter
+    });
+    persistUiState();
+    panel.querySelectorAll("[data-ai-bot-log-filter-value]").forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.aiBotLogFilterValue === activeAiBotLogLevelFilter);
+    });
+    aiBotLogPage = 1;
+    const logList = panel.querySelector('[data-ai-bot-log-panel="runtime"]');
+    if (logList) {
+      logList.innerHTML = renderAiBotLogItemsHtml();
+      logList.dataset.signature = getAiBotLogListSignature(getAiBotLogCurrentPageLogs());
+      logList.scrollTop = 0;
+      updateAiBotLogFilterCount();
+    }
+    const pagination = panel.querySelector("[data-ai-bot-log-pagination]");
+    if (pagination) {
+      pagination.innerHTML = renderAiBotLogPaginationHtml();
+    }
   }
 
   function renderAiBotMessageLogItemsHtml() {
@@ -15767,7 +15919,11 @@
     return `
       <div class="better-settings__field-title better-settings__ai-bot-log-title">
         <span class="better-settings__section-title">运行记录</span>
-        <button class="better-settings__text-button better-settings__ai-bot-clear-logs" type="button">清空日志</button>
+        <span class="better-settings__ai-bot-log-title-actions">
+          <span class="better-settings__message better-settings__ai-bot-log-status" role="status">日志已加载</span>
+          <button class="better-settings__text-button better-settings__ai-bot-clear-logs" type="button">清空日志</button>
+          <button class="better-settings__primary better-settings__ai-bot-refresh-logs" type="button">刷新日志</button>
+        </span>
       </div>
       <div class="better-settings__log-switch" role="tablist" aria-label="AI Bot 日志类型">
         <button class="better-settings__log-switch-button${activeAiBotLogView === "runtime" ? " is-active" : ""}" type="button" data-ai-bot-log-view="runtime" role="tab" aria-selected="${activeAiBotLogView === "runtime" ? "true" : "false"}">运行日志</button>
@@ -15782,13 +15938,20 @@
           ["feed", "首页推荐帖"]
         ].map(([value, label]) => `<button class="better-settings__ai-bot-message-filter-button${activeAiBotMessageLogFilter === value ? " is-active" : ""}" type="button" data-ai-bot-message-filter-value="${value}">${label}</button>`).join("")}
       </div>
-      <div class="better-settings__ai-bot-logs" data-ai-bot-log-panel="runtime" data-signature="${escapeHtml(getAiBotLogListSignature(aiBotLogs))}"${activeAiBotLogView === "runtime" ? "" : " hidden"}>${renderAiBotLogItemsHtml()}</div>
+      <div class="better-settings__ai-bot-message-filter better-settings__ai-bot-log-filter" data-ai-bot-log-filter${activeAiBotLogView === "runtime" ? "" : " hidden"}>
+        <span class="better-settings__ai-bot-log-filter-count" data-ai-bot-log-filter-count></span>
+        ${[
+          ["all", "全部"],
+          ["success", "成功"],
+          ["error", "错误"],
+          ["warn", "提醒"],
+          ["info", "信息"]
+        ].map(([value, label]) => `<button class="better-settings__ai-bot-message-filter-button${activeAiBotLogLevelFilter === value ? " is-active" : ""}" type="button" data-ai-bot-log-filter-value="${value}">${label}</button>`).join("")}
+      </div>
+      <div class="better-settings__ai-bot-logs" data-ai-bot-log-panel="runtime" data-signature="${escapeHtml(getAiBotLogListSignature(getAiBotLogCurrentPageLogs()))}"${activeAiBotLogView === "runtime" ? "" : " hidden"}>${renderAiBotLogItemsHtml()}</div>
+      <div class="better-settings__ai-bot-log-pagination" data-ai-bot-log-pagination${activeAiBotLogView === "runtime" ? "" : " hidden"}>${renderAiBotLogPaginationHtml()}</div>
       <div class="better-settings__ai-bot-message-logs" data-ai-bot-log-panel="message" data-signature="${escapeHtml(getAiBotMessageLogSignature())}"${activeAiBotLogView === "message" ? "" : " hidden"}>${renderAiBotMessageLogItemsHtml()}</div>
       <div class="better-settings__ai-bot-message-logs" data-ai-bot-log-panel="pending" data-signature="${escapeHtml(`${aiBotReplyQueue.length}:${aiBotReplyQueue.slice(0, 5).map((item) => String(item?.messageId || item?.queuedAt || "")).join("|")}`)}"${activeAiBotLogView === "pending" ? "" : " hidden"}>${renderAiBotReplyQueueItemsHtml()}</div>
-      <div class="better-settings__actions">
-        <button class="better-settings__primary better-settings__ai-bot-refresh-logs" type="button">刷新日志</button>
-        <span class="better-settings__message" role="status">日志已加载</span>
-      </div>
     `;
   }
 
@@ -15869,6 +16032,23 @@
     const messageFilter = panel.querySelector("[data-ai-bot-message-filter]");
     if (messageFilter) {
       messageFilter.hidden = activeAiBotLogView !== "message";
+    }
+    const logFilter = panel.querySelector("[data-ai-bot-log-filter]");
+    if (logFilter) {
+      logFilter.hidden = activeAiBotLogView !== "runtime";
+    }
+    const pagination = panel.querySelector("[data-ai-bot-log-pagination]");
+    if (pagination) {
+      pagination.hidden = activeAiBotLogView !== "runtime";
+    }
+    // 切回运行日志视图时若容器仍为空（数据未渲染），补一次渲染
+    if (activeAiBotLogView === "runtime") {
+      const logList = panel.querySelector('[data-ai-bot-log-panel="runtime"]');
+      if (logList && !logList.querySelector(".better-settings__ai-bot-log, .better-settings__empty")) {
+        logList.innerHTML = renderAiBotLogItemsHtml();
+        logList.dataset.signature = getAiBotLogListSignature(getAiBotLogCurrentPageLogs());
+        updateAiBotLogFilterCount();
+      }
     }
   }
 
@@ -16136,6 +16316,138 @@
     `;
   }
 
+  // ---- 版本更新检测 ----
+  // 通过 GitHub Releases API 获取最新正式版 tag，与当前版本比较，有新版本则在 banner 显示提示。
+  // 结果缓存到 localStorage（24h 内不重复请求），请求失败时静默不打扰用户。
+  const GITHUB_REPO = "t479842598/Better-Black-Box";
+  const VERSION_CHECK_STORAGE_KEY = "better-xiaoheihe-version-check";
+  const VERSION_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+  function parseExtensionVersion(version) {
+    const match = String(version || "").match(/(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+    if (!match) {
+      return null;
+    }
+    return [
+      Number(match[1] || 0),
+      Number(match[2] || 0),
+      Number(match[3] || 0)
+    ];
+  }
+
+  function compareExtensionVersions(left, right) {
+    const leftParts = parseExtensionVersion(left);
+    const rightParts = parseExtensionVersion(right);
+    if (!leftParts || !rightParts) {
+      return 0;
+    }
+    for (let index = 0; index < 3; index += 1) {
+      if (leftParts[index] !== rightParts[index]) {
+        return leftParts[index] > rightParts[index] ? 1 : -1;
+      }
+    }
+    return 0;
+  }
+
+  function readVersionCheckCache() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(VERSION_CHECK_STORAGE_KEY) || "null");
+      if (!saved || !saved.latestTag) {
+        return null;
+      }
+      if (Date.now() - Number(saved.checkedAt || 0) >= VERSION_CHECK_INTERVAL_MS) {
+        return null;
+      }
+      return saved;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeVersionCheckCache(cache) {
+    try {
+      localStorage.setItem(VERSION_CHECK_STORAGE_KEY, JSON.stringify({
+        ...cache,
+        checkedAt: Date.now()
+      }));
+    } catch {
+      // 存储不可用时忽略
+    }
+  }
+
+  async function fetchLatestRelease() {
+    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+      headers: {
+        Accept: "application/vnd.github+json"
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`GitHub API ${response.status}`);
+    }
+    const release = await response.json();
+    return {
+      tagName: String(release.tag_name || ""),
+      name: String(release.name || ""),
+      body: String(release.body || ""),
+      htmlUrl: String(release.html_url || ""),
+      publishedAt: String(release.published_at || "")
+    };
+  }
+
+  function renderVersionUpdateBanner(banner, updateInfo) {
+    if (!banner || !updateInfo) {
+      return;
+    }
+    const latestVersion = updateInfo.tagName.replace(/^v/i, "");
+    if (compareExtensionVersions(latestVersion, EXTENSION_VERSION) <= 0) {
+      return;
+    }
+    const action = document.createElement("span");
+    action.className = "better-settings__version-update";
+    action.setAttribute("role", "button");
+    action.tabIndex = 0;
+    action.title = `查看 v${escapeHtml(latestVersion)} 更新内容`;
+    action.innerHTML = `发现新版本 v${escapeHtml(latestVersion)} <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M8 5h7v7M15 5 5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    action.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (updateInfo.htmlUrl) {
+        window.open(updateInfo.htmlUrl, "_blank", "noopener,noreferrer");
+      }
+    });
+    action.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        action.click();
+      }
+    });
+    banner.appendChild(action);
+  }
+
+  function checkAiBotExtensionUpdate() {
+    const banner = document.querySelector(`.${SETTINGS_PANEL_CLASS} .better-settings__version-banner`);
+    if (!banner) {
+      return;
+    }
+    // 已有检测结果先渲染（缓存命中时不重复请求）
+    const cached = readVersionCheckCache();
+    if (cached) {
+      renderVersionUpdateBanner(banner, cached);
+    }
+    if (cached || !window.fetch) {
+      return;
+    }
+    fetchLatestRelease().then((release) => {
+      const updateInfo = {
+        ...release,
+        latestTag: release.tagName
+      };
+      writeVersionCheckCache(updateInfo);
+      renderVersionUpdateBanner(banner, updateInfo);
+    }).catch(() => {
+      // 请求失败静默，下次打开面板再试
+    });
+  }
+
   function renderSettingsPanel() {
     const panel = document.querySelector(`.${SETTINGS_PANEL_CLASS}`);
     if (!panel) {
@@ -16194,6 +16506,10 @@
       syncAiConnectionDot("aiBot", aiBotSettings);
       loadCachedAiBotModelOptions(panel);
     }
+    if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+      updateAiBotLogFilterCount();
+    }
+    checkAiBotExtensionUpdate();
     repositionSettingsPanelIfOpen();
   }
 
@@ -16699,6 +17015,7 @@
     });
     aiBotLogs = [];
     aiBotMessageLogs = [];
+    aiBotLogPage = 1;
     renderSettingsPanel();
     setAiBotPanelStatus(panel, "日志已清空");
   }
@@ -16772,15 +17089,26 @@
     if (!logList) {
       return;
     }
-    const signature = getAiBotLogListSignature(aiBotLogs);
+    const signature = getAiBotLogListSignature(getAiBotLogCurrentPageLogs());
     if (!options.force && logList.dataset.signature === signature) {
+      // 当前页内容未变，但总条数/页数可能已随新日志变化，仅同步分页信息与条数
+      const pagination = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-bot-log-pagination]`);
+      if (pagination) {
+        pagination.innerHTML = renderAiBotLogPaginationHtml();
+      }
+      updateAiBotLogFilterCount();
       return;
     }
     const previousScrollTop = logList.scrollTop;
-    const wasNearTop = previousScrollTop <= 4;
     logList.innerHTML = renderAiBotLogItemsHtml();
     logList.dataset.signature = signature;
-    logList.scrollTop = wasNearTop ? 0 : Math.min(previousScrollTop, logList.scrollHeight);
+    logList.scrollTop = Math.min(previousScrollTop, logList.scrollHeight);
+    // 同步分页信息与条数
+    const pagination = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-bot-log-pagination]`);
+    if (pagination) {
+      pagination.innerHTML = renderAiBotLogPaginationHtml();
+    }
+    updateAiBotLogFilterCount();
   }
 
   function syncAiBotLogDetailState(detail) {
@@ -17116,6 +17444,18 @@
       const aiBotMessageFilterButton = event.target.closest("[data-ai-bot-message-filter-value]");
       if (aiBotMessageFilterButton && panel.contains(aiBotMessageFilterButton)) {
         setAiBotMessageLogFilter(panel, aiBotMessageFilterButton.dataset.aiBotMessageFilterValue);
+        return;
+      }
+
+      const aiBotLogLevelFilterButton = event.target.closest("[data-ai-bot-log-filter-value]");
+      if (aiBotLogLevelFilterButton && panel.contains(aiBotLogLevelFilterButton)) {
+        setAiBotLogLevelFilter(panel, aiBotLogLevelFilterButton.dataset.aiBotLogFilterValue);
+        return;
+      }
+
+      const aiBotLogPageButton = event.target.closest("[data-ai-bot-log-page]");
+      if (aiBotLogPageButton && panel.contains(aiBotLogPageButton) && !aiBotLogPageButton.disabled) {
+        setAiBotLogPage(panel, aiBotLogPageButton.dataset.aiBotLogPage);
         return;
       }
 
@@ -18671,7 +19011,17 @@
       });
       const input = form.querySelector(".better-header-search__input");
       input?.addEventListener("focus", () => renderHeaderSearchHistory(form));
-      input?.addEventListener("input", () => renderHeaderSearchHistory(form));
+      // 输入防抖：避免每次键击全量重建搜索历史列表
+      let searchHistoryInputTimer = null;
+      input?.addEventListener("input", () => {
+        if (searchHistoryInputTimer) {
+          window.clearTimeout(searchHistoryInputTimer);
+        }
+        searchHistoryInputTimer = window.setTimeout(() => {
+          searchHistoryInputTimer = null;
+          renderHeaderSearchHistory(form);
+        }, 150);
+      });
       input?.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
           closeHeaderSearchHistory(form);
@@ -19666,14 +20016,22 @@
         positionReplyEmojiPanel(form);
       }
     });
+    // 全局滚动捕获：rAF 节流，避免每帧 getBoundingClientRect 强制布局
+    let replyEmojiScrollRaf = 0;
+    const handleReplyEmojiScroll = () => {
+      replyEmojiScrollRaf = 0;
+      const form = getOpenReplyEmojiForm();
+      if (form) {
+        positionReplyEmojiPanel(form);
+      }
+    };
     window.addEventListener("scroll", (event) => {
       if (event.target instanceof Element && event.target.closest(".better-comment-preview__emoji-panel")) {
         return;
       }
 
-      const form = getOpenReplyEmojiForm();
-      if (form) {
-        positionReplyEmojiPanel(form);
+      if (!replyEmojiScrollRaf) {
+        replyEmojiScrollRaf = window.requestAnimationFrame(handleReplyEmojiScroll);
       }
     }, true);
   }

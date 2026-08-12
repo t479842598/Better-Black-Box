@@ -1104,7 +1104,17 @@
       });
       const input = form.querySelector(".better-header-search__input");
       input?.addEventListener("focus", () => renderHeaderSearchHistory(form));
-      input?.addEventListener("input", () => renderHeaderSearchHistory(form));
+      // 输入防抖：避免每次键击全量重建搜索历史列表
+      let searchHistoryInputTimer = null;
+      input?.addEventListener("input", () => {
+        if (searchHistoryInputTimer) {
+          window.clearTimeout(searchHistoryInputTimer);
+        }
+        searchHistoryInputTimer = window.setTimeout(() => {
+          searchHistoryInputTimer = null;
+          renderHeaderSearchHistory(form);
+        }, 150);
+      });
       input?.addEventListener("keydown", (event) => {
         if (event.key === "Escape") {
           closeHeaderSearchHistory(form);

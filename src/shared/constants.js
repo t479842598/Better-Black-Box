@@ -22,7 +22,7 @@
   const UI_STATE_STORAGE_KEY = "better-xiaoheihe-ui-state";
   const COMMENT_EMOJI_USAGE_STORAGE_KEY = "better-xiaoheihe-comment-emoji-usage";
   // 版本信息：发布时与 manifest.json 的 version 同步更新，用于设置面板顶部展示“已更新”提示。
-  const EXTENSION_VERSION = "1.5";
+  const EXTENSION_VERSION = "1.6";
   const EXTENSION_BUILD_DATE = "2026-08-12";
   const FEED_LAYOUT_SETTINGS_STORAGE_KEY = "better-xiaoheihe-feed-layout-settings";
   const HOT_SEARCH_DISABLED_STORAGE_KEY = "better-xiaoheihe-hot-search-disabled";

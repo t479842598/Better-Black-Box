@@ -219,6 +219,18 @@
         return;
       }
 
+      const aiBotLogLevelFilterButton = event.target.closest("[data-ai-bot-log-filter-value]");
+      if (aiBotLogLevelFilterButton && panel.contains(aiBotLogLevelFilterButton)) {
+        setAiBotLogLevelFilter(panel, aiBotLogLevelFilterButton.dataset.aiBotLogFilterValue);
+        return;
+      }
+
+      const aiBotLogPageButton = event.target.closest("[data-ai-bot-log-page]");
+      if (aiBotLogPageButton && panel.contains(aiBotLogPageButton) && !aiBotLogPageButton.disabled) {
+        setAiBotLogPage(panel, aiBotLogPageButton.dataset.aiBotLogPage);
+        return;
+      }
+
       const aiBotLogDetailSummary = event.target.closest(".better-settings__ai-bot-log-detail-summary");
       if (aiBotLogDetailSummary && panel.contains(aiBotLogDetailSummary)) {
         const detail = aiBotLogDetailSummary.closest(".better-settings__ai-bot-log-detail-wrap");

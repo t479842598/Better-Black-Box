@@ -89,6 +89,7 @@
     });
     aiBotLogs = [];
     aiBotMessageLogs = [];
+    aiBotLogPage = 1;
     renderSettingsPanel();
     setAiBotPanelStatus(panel, "日志已清空");
   }
@@ -162,15 +163,26 @@
     if (!logList) {
       return;
     }
-    const signature = getAiBotLogListSignature(aiBotLogs);
+    const signature = getAiBotLogListSignature(getAiBotLogCurrentPageLogs());
     if (!options.force && logList.dataset.signature === signature) {
+      // 当前页内容未变，但总条数/页数可能已随新日志变化，仅同步分页信息与条数
+      const pagination = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-bot-log-pagination]`);
+      if (pagination) {
+        pagination.innerHTML = renderAiBotLogPaginationHtml();
+      }
+      updateAiBotLogFilterCount();
       return;
     }
     const previousScrollTop = logList.scrollTop;
-    const wasNearTop = previousScrollTop <= 4;
     logList.innerHTML = renderAiBotLogItemsHtml();
     logList.dataset.signature = signature;
-    logList.scrollTop = wasNearTop ? 0 : Math.min(previousScrollTop, logList.scrollHeight);
+    logList.scrollTop = Math.min(previousScrollTop, logList.scrollHeight);
+    // 同步分页信息与条数
+    const pagination = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-bot-log-pagination]`);
+    if (pagination) {
+      pagination.innerHTML = renderAiBotLogPaginationHtml();
+    }
+    updateAiBotLogFilterCount();
   }
 
   function syncAiBotLogDetailState(detail) {

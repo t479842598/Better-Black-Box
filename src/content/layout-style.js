@@ -2171,6 +2171,32 @@
         color: rgba(0, 0, 0, 0.55);
         font-size: 12px;
       }
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-update {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        margin-left: auto;
+        padding: 2px 8px;
+        border: 1px solid #ff9d00;
+        border-radius: 999px;
+        background: #fff;
+        color: #d97b00;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 16px;
+        transition: background 0.15s ease, color 0.15s ease;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-update:hover,
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-update:focus-visible {
+        background: #ff9d00;
+        color: #fff;
+        outline: none;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-update svg {
+        width: 12px;
+        height: 12px;
+      }
 
       .${SETTINGS_PANEL_CLASS} .better-settings__tab {
         box-sizing: border-box;
@@ -2982,6 +3008,30 @@
         margin: 12px 0 8px;
       }
 
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-log-title-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        flex: 0 0 auto;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-log-title-actions .better-settings__primary {
+        height: 26px;
+        padding: 0 10px;
+        font-size: 12px;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-log-status {
+        max-width: 180px;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-log-filter-count {
+        align-self: center;
+        color: #8a9299;
+        font-size: 11px;
+        line-height: 26px;
+      }
+
       .${SETTINGS_PANEL_CLASS} .better-settings__log-switch {
         display: inline-flex;
         gap: 4px;
@@ -3082,6 +3132,10 @@
         border: 1px solid #eef0f2;
         border-radius: 8px;
         background: #fbfcfd;
+      }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-log-pagination {
+        margin-top: 8px;
       }
 
       .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-message-logs {

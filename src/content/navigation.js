@@ -425,14 +425,22 @@
         positionReplyEmojiPanel(form);
       }
     });
+    // 全局滚动捕获：rAF 节流，避免每帧 getBoundingClientRect 强制布局
+    let replyEmojiScrollRaf = 0;
+    const handleReplyEmojiScroll = () => {
+      replyEmojiScrollRaf = 0;
+      const form = getOpenReplyEmojiForm();
+      if (form) {
+        positionReplyEmojiPanel(form);
+      }
+    };
     window.addEventListener("scroll", (event) => {
       if (event.target instanceof Element && event.target.closest(".better-comment-preview__emoji-panel")) {
         return;
       }
 
-      const form = getOpenReplyEmojiForm();
-      if (form) {
-        positionReplyEmojiPanel(form);
+      if (!replyEmojiScrollRaf) {
+        replyEmojiScrollRaf = window.requestAnimationFrame(handleReplyEmojiScroll);
       }
     }, true);
   }

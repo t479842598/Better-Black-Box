@@ -138,41 +138,133 @@
     return `${items.length}:${items.slice(0, 5).map((log) => getAiBotLogId(log)).join("|")}`;
   }
 
+  function renderAiBotLogItemHtml(log) {
+    const logId = getAiBotLogId(log);
+    const detailEntries = Object.entries(log.detail || {})
+      .filter(([, value]) => value !== undefined && value !== null && value !== "");
+    return `
+      <div class="better-settings__ai-bot-log">
+        <div class="better-settings__ai-bot-log-meta">
+          <span class="better-settings__ai-bot-log-level better-settings__ai-bot-log-level--${escapeHtml(log.level || "info")}">${escapeHtml({
+            success: "成功",
+            warn: "提醒",
+            error: "错误",
+            info: "信息"
+          }[log.level] || "信息")}</span>
+          <span>${escapeHtml(log.timeText || new Date(log.timestamp || Date.now()).toLocaleString("zh-CN", { hour12: false }))}</span>
+        </div>
+        <div class="better-settings__ai-bot-log-message">${escapeHtml(log.message || "")}</div>
+        ${detailEntries.length ? (() => {
+          const isExpanded = expandedAiBotLogIds.has(logId);
+          const detailSummary = log.level === "error" ? "展开错误详情" : "展开日志详情";
+          return `
+            <details class="better-settings__ai-bot-log-detail-wrap" data-log-id="${escapeHtml(logId)}"${isExpanded ? " open" : ""}>
+              <summary class="better-settings__ai-bot-log-detail-summary">${detailSummary}</summary>
+              <button class="better-settings__ai-bot-log-copy" type="button">复制</button>
+              <div class="better-settings__ai-bot-log-detail">${isExpanded ? renderAiBotLogDetailRowsHtml(log.detail || {}) : ""}</div>
+            </details>
+          `;
+        })() : ""}
+      </div>
+    `;
+  }
+
+  function getFilteredAiBotLogs() {
+    return activeAiBotLogLevelFilter === "all"
+      ? aiBotLogs
+      : aiBotLogs.filter((log) => String(log?.level || "info") === activeAiBotLogLevelFilter);
+  }
+
+  // ---- 运行日志分页 ----
+  // 每页只渲染固定条数（虚拟列表方案在部分场景下详情展开不稳定，改为简单分页）
+  const AI_BOT_LOG_PAGE_SIZE = 200;
+  let aiBotLogPage = 1;
+
+  function getAiBotLogTotalPages() {
+    return Math.max(1, Math.ceil(getFilteredAiBotLogs().length / AI_BOT_LOG_PAGE_SIZE));
+  }
+
+  function getAiBotLogCurrentPageLogs() {
+    const visibleLogs = getFilteredAiBotLogs();
+    const totalPages = getAiBotLogTotalPages();
+    aiBotLogPage = Math.max(1, Math.min(aiBotLogPage, totalPages));
+    const pageStart = (aiBotLogPage - 1) * AI_BOT_LOG_PAGE_SIZE;
+    return visibleLogs.slice(pageStart, pageStart + AI_BOT_LOG_PAGE_SIZE);
+  }
+
   function renderAiBotLogItemsHtml() {
-    return aiBotLogs.length
-      ? aiBotLogs.map((log) => `
-            ${(() => {
-              const logId = getAiBotLogId(log);
-              const detailEntries = Object.entries(log.detail || {})
-                .filter(([, value]) => value !== undefined && value !== null && value !== "");
-              return `
-            <div class="better-settings__ai-bot-log">
-              <div class="better-settings__ai-bot-log-meta">
-                <span class="better-settings__ai-bot-log-level better-settings__ai-bot-log-level--${escapeHtml(log.level || "info")}">${escapeHtml({
-                  success: "成功",
-                  warn: "提醒",
-                  error: "错误",
-                  info: "信息"
-                }[log.level] || "信息")}</span>
-                <span>${escapeHtml(log.timeText || new Date(log.timestamp || Date.now()).toLocaleString("zh-CN", { hour12: false }))}</span>
-              </div>
-              <div class="better-settings__ai-bot-log-message">${escapeHtml(log.message || "")}</div>
-              ${detailEntries.length ? (() => {
-                const isExpanded = expandedAiBotLogIds.has(logId);
-                const detailSummary = log.level === "error" ? "展开错误详情" : "展开日志详情";
-                return `
-                  <details class="better-settings__ai-bot-log-detail-wrap" data-log-id="${escapeHtml(logId)}"${isExpanded ? " open" : ""}>
-                    <summary class="better-settings__ai-bot-log-detail-summary">${detailSummary}</summary>
-                    <button class="better-settings__ai-bot-log-copy" type="button">复制</button>
-                    <div class="better-settings__ai-bot-log-detail">${isExpanded ? renderAiBotLogDetailRowsHtml(log.detail || {}) : ""}</div>
-                  </details>
-                `;
-              })() : ""}
-            </div>
-              `;
-            })()}
-          `).join("")
-      : `<div class="better-settings__empty">暂无 AI Bot 运行日志</div>`;
+    const pageLogs = getAiBotLogCurrentPageLogs();
+    return pageLogs.length
+      ? pageLogs.map(renderAiBotLogItemHtml).join("")
+      : `<div class="better-settings__empty">${aiBotLogs.length ? "当前筛选无运行日志" : "暂无 AI Bot 运行日志"}</div>`;
+  }
+
+  function renderAiBotLogPaginationHtml() {
+    const visibleCount = getFilteredAiBotLogs().length;
+    if (visibleCount <= AI_BOT_LOG_PAGE_SIZE) {
+      return "";
+    }
+    const totalPages = getAiBotLogTotalPages();
+    return `
+      <div class="better-settings__pagination">
+        <button class="better-settings__text-button" type="button" data-ai-bot-log-page="prev"${aiBotLogPage === 1 ? " disabled" : ""}>上一页</button>
+        <span class="better-settings__pagination-info">第 ${escapeHtml(aiBotLogPage)} / ${escapeHtml(totalPages)} 页 · 共 ${escapeHtml(visibleCount)} 条</span>
+        <button class="better-settings__text-button" type="button" data-ai-bot-log-page="next"${aiBotLogPage === totalPages ? " disabled" : ""}>下一页</button>
+      </div>
+    `;
+  }
+
+  function updateAiBotLogFilterCount() {
+    const countNode = document.querySelector(`.${SETTINGS_PANEL_CLASS} [data-ai-bot-log-filter-count]`);
+    if (!countNode) {
+      return;
+    }
+    countNode.textContent = `共 ${getFilteredAiBotLogs().length} 条`;
+  }
+
+  function setAiBotLogPage(panel, direction) {
+    const totalPages = getAiBotLogTotalPages();
+    const nextPage = direction === "next"
+      ? Math.min(aiBotLogPage + 1, totalPages)
+      : Math.max(1, aiBotLogPage - 1);
+    if (nextPage === aiBotLogPage) {
+      return;
+    }
+    aiBotLogPage = nextPage;
+    const logList = panel.querySelector('[data-ai-bot-log-panel="runtime"]');
+    if (logList) {
+      logList.innerHTML = renderAiBotLogItemsHtml();
+      logList.dataset.signature = getAiBotLogListSignature(getAiBotLogCurrentPageLogs());
+      logList.scrollTop = 0;
+    }
+    const pagination = panel.querySelector("[data-ai-bot-log-pagination]");
+    if (pagination) {
+      pagination.innerHTML = renderAiBotLogPaginationHtml();
+    }
+  }
+
+  function setAiBotLogLevelFilter(panel, filter) {
+    activeAiBotLogLevelFilter = ["success", "error", "warn", "info"].includes(filter) ? filter : "all";
+    uiState = normalizeUiState({
+      ...uiState,
+      aiBotLogLevelFilter: activeAiBotLogLevelFilter
+    });
+    persistUiState();
+    panel.querySelectorAll("[data-ai-bot-log-filter-value]").forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.aiBotLogFilterValue === activeAiBotLogLevelFilter);
+    });
+    aiBotLogPage = 1;
+    const logList = panel.querySelector('[data-ai-bot-log-panel="runtime"]');
+    if (logList) {
+      logList.innerHTML = renderAiBotLogItemsHtml();
+      logList.dataset.signature = getAiBotLogListSignature(getAiBotLogCurrentPageLogs());
+      logList.scrollTop = 0;
+      updateAiBotLogFilterCount();
+    }
+    const pagination = panel.querySelector("[data-ai-bot-log-pagination]");
+    if (pagination) {
+      pagination.innerHTML = renderAiBotLogPaginationHtml();
+    }
   }
 
   function renderAiBotMessageLogItemsHtml() {
@@ -307,7 +399,11 @@
     return `
       <div class="better-settings__field-title better-settings__ai-bot-log-title">
         <span class="better-settings__section-title">运行记录</span>
-        <button class="better-settings__text-button better-settings__ai-bot-clear-logs" type="button">清空日志</button>
+        <span class="better-settings__ai-bot-log-title-actions">
+          <span class="better-settings__message better-settings__ai-bot-log-status" role="status">日志已加载</span>
+          <button class="better-settings__text-button better-settings__ai-bot-clear-logs" type="button">清空日志</button>
+          <button class="better-settings__primary better-settings__ai-bot-refresh-logs" type="button">刷新日志</button>
+        </span>
       </div>
       <div class="better-settings__log-switch" role="tablist" aria-label="AI Bot 日志类型">
         <button class="better-settings__log-switch-button${activeAiBotLogView === "runtime" ? " is-active" : ""}" type="button" data-ai-bot-log-view="runtime" role="tab" aria-selected="${activeAiBotLogView === "runtime" ? "true" : "false"}">运行日志</button>
@@ -322,13 +418,20 @@
           ["feed", "首页推荐帖"]
         ].map(([value, label]) => `<button class="better-settings__ai-bot-message-filter-button${activeAiBotMessageLogFilter === value ? " is-active" : ""}" type="button" data-ai-bot-message-filter-value="${value}">${label}</button>`).join("")}
       </div>
-      <div class="better-settings__ai-bot-logs" data-ai-bot-log-panel="runtime" data-signature="${escapeHtml(getAiBotLogListSignature(aiBotLogs))}"${activeAiBotLogView === "runtime" ? "" : " hidden"}>${renderAiBotLogItemsHtml()}</div>
+      <div class="better-settings__ai-bot-message-filter better-settings__ai-bot-log-filter" data-ai-bot-log-filter${activeAiBotLogView === "runtime" ? "" : " hidden"}>
+        <span class="better-settings__ai-bot-log-filter-count" data-ai-bot-log-filter-count></span>
+        ${[
+          ["all", "全部"],
+          ["success", "成功"],
+          ["error", "错误"],
+          ["warn", "提醒"],
+          ["info", "信息"]
+        ].map(([value, label]) => `<button class="better-settings__ai-bot-message-filter-button${activeAiBotLogLevelFilter === value ? " is-active" : ""}" type="button" data-ai-bot-log-filter-value="${value}">${label}</button>`).join("")}
+      </div>
+      <div class="better-settings__ai-bot-logs" data-ai-bot-log-panel="runtime" data-signature="${escapeHtml(getAiBotLogListSignature(getAiBotLogCurrentPageLogs()))}"${activeAiBotLogView === "runtime" ? "" : " hidden"}>${renderAiBotLogItemsHtml()}</div>
+      <div class="better-settings__ai-bot-log-pagination" data-ai-bot-log-pagination${activeAiBotLogView === "runtime" ? "" : " hidden"}>${renderAiBotLogPaginationHtml()}</div>
       <div class="better-settings__ai-bot-message-logs" data-ai-bot-log-panel="message" data-signature="${escapeHtml(getAiBotMessageLogSignature())}"${activeAiBotLogView === "message" ? "" : " hidden"}>${renderAiBotMessageLogItemsHtml()}</div>
       <div class="better-settings__ai-bot-message-logs" data-ai-bot-log-panel="pending" data-signature="${escapeHtml(`${aiBotReplyQueue.length}:${aiBotReplyQueue.slice(0, 5).map((item) => String(item?.messageId || item?.queuedAt || "")).join("|")}`)}"${activeAiBotLogView === "pending" ? "" : " hidden"}>${renderAiBotReplyQueueItemsHtml()}</div>
-      <div class="better-settings__actions">
-        <button class="better-settings__primary better-settings__ai-bot-refresh-logs" type="button">刷新日志</button>
-        <span class="better-settings__message" role="status">日志已加载</span>
-      </div>
     `;
   }
 
@@ -409,6 +512,23 @@
     const messageFilter = panel.querySelector("[data-ai-bot-message-filter]");
     if (messageFilter) {
       messageFilter.hidden = activeAiBotLogView !== "message";
+    }
+    const logFilter = panel.querySelector("[data-ai-bot-log-filter]");
+    if (logFilter) {
+      logFilter.hidden = activeAiBotLogView !== "runtime";
+    }
+    const pagination = panel.querySelector("[data-ai-bot-log-pagination]");
+    if (pagination) {
+      pagination.hidden = activeAiBotLogView !== "runtime";
+    }
+    // 切回运行日志视图时若容器仍为空（数据未渲染），补一次渲染
+    if (activeAiBotLogView === "runtime") {
+      const logList = panel.querySelector('[data-ai-bot-log-panel="runtime"]');
+      if (logList && !logList.querySelector(".better-settings__ai-bot-log, .better-settings__empty")) {
+        logList.innerHTML = renderAiBotLogItemsHtml();
+        logList.dataset.signature = getAiBotLogListSignature(getAiBotLogCurrentPageLogs());
+        updateAiBotLogFilterCount();
+      }
     }
   }
 

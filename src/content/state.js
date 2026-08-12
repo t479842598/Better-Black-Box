@@ -152,6 +152,7 @@
   let aiBotLogRefreshRunning = false;
   let activeAiBotLogView = "runtime";
   let activeAiBotMessageLogFilter = "all";
+  let activeAiBotLogLevelFilter = "all";
   const expandedAiBotLogIds = new Set();
   const AI_REPLY_HISTORY_PAGE_SIZE = 10;
   let aiReplyHistoryPage = 1;
@@ -593,6 +594,9 @@
       aiBotMessageLogFilter: ["all", "mention", "comment", "feed"].includes(state?.aiBotMessageLogFilter)
         ? state.aiBotMessageLogFilter
         : "all",
+      aiBotLogLevelFilter: ["all", "success", "error", "warn", "info"].includes(state?.aiBotLogLevelFilter)
+        ? state.aiBotLogLevelFilter
+        : "all",
       aiSummaryWindowLeft: state?.aiSummaryWindowLeft !== null
         && state?.aiSummaryWindowLeft !== undefined
         && Number.isFinite(Number(state.aiSummaryWindowLeft))
@@ -631,6 +635,7 @@
     }
     uiState = normalizedState;
     activeAiBotMessageLogFilter = normalizedState.aiBotMessageLogFilter;
+    activeAiBotLogLevelFilter = normalizedState.aiBotLogLevelFilter;
     renderSettingsPanel();
   }
 
@@ -889,6 +894,7 @@
     aiBotSettings = normalizeAiBotSettings(values[AI_BOT_SETTINGS_STORAGE_KEY]);
     uiState = normalizeUiState(values[UI_STATE_STORAGE_KEY]);
     activeAiBotMessageLogFilter = uiState.aiBotMessageLogFilter;
+    activeAiBotLogLevelFilter = uiState.aiBotLogLevelFilter;
     aiBotLogs = normalizeAiBotLogs(values[AI_BOT_LOGS_STORAGE_KEY]);
     aiBotMessageLogs = normalizeAiBotMessageLogs(values[AI_BOT_MESSAGE_LOGS_STORAGE_KEY]);
     aiBotReplyQueue = normalizeAiBotReplyQueue(values[AI_BOT_REPLY_QUEUE_STORAGE_KEY]);

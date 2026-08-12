@@ -169,6 +169,138 @@
     `;
   }
 
+  // ---- 版本更新检测 ----
+  // 通过 GitHub Releases API 获取最新正式版 tag，与当前版本比较，有新版本则在 banner 显示提示。
+  // 结果缓存到 localStorage（24h 内不重复请求），请求失败时静默不打扰用户。
+  const GITHUB_REPO = "t479842598/Better-Black-Box";
+  const VERSION_CHECK_STORAGE_KEY = "better-xiaoheihe-version-check";
+  const VERSION_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+  function parseExtensionVersion(version) {
+    const match = String(version || "").match(/(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+    if (!match) {
+      return null;
+    }
+    return [
+      Number(match[1] || 0),
+      Number(match[2] || 0),
+      Number(match[3] || 0)
+    ];
+  }
+
+  function compareExtensionVersions(left, right) {
+    const leftParts = parseExtensionVersion(left);
+    const rightParts = parseExtensionVersion(right);
+    if (!leftParts || !rightParts) {
+      return 0;
+    }
+    for (let index = 0; index < 3; index += 1) {
+      if (leftParts[index] !== rightParts[index]) {
+        return leftParts[index] > rightParts[index] ? 1 : -1;
+      }
+    }
+    return 0;
+  }
+
+  function readVersionCheckCache() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(VERSION_CHECK_STORAGE_KEY) || "null");
+      if (!saved || !saved.latestTag) {
+        return null;
+      }
+      if (Date.now() - Number(saved.checkedAt || 0) >= VERSION_CHECK_INTERVAL_MS) {
+        return null;
+      }
+      return saved;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeVersionCheckCache(cache) {
+    try {
+      localStorage.setItem(VERSION_CHECK_STORAGE_KEY, JSON.stringify({
+        ...cache,
+        checkedAt: Date.now()
+      }));
+    } catch {
+      // 存储不可用时忽略
+    }
+  }
+
+  async function fetchLatestRelease() {
+    const response = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+      headers: {
+        Accept: "application/vnd.github+json"
+      }
+    });
+    if (!response.ok) {
+      throw new Error(`GitHub API ${response.status}`);
+    }
+    const release = await response.json();
+    return {
+      tagName: String(release.tag_name || ""),
+      name: String(release.name || ""),
+      body: String(release.body || ""),
+      htmlUrl: String(release.html_url || ""),
+      publishedAt: String(release.published_at || "")
+    };
+  }
+
+  function renderVersionUpdateBanner(banner, updateInfo) {
+    if (!banner || !updateInfo) {
+      return;
+    }
+    const latestVersion = updateInfo.tagName.replace(/^v/i, "");
+    if (compareExtensionVersions(latestVersion, EXTENSION_VERSION) <= 0) {
+      return;
+    }
+    const action = document.createElement("span");
+    action.className = "better-settings__version-update";
+    action.setAttribute("role", "button");
+    action.tabIndex = 0;
+    action.title = `查看 v${escapeHtml(latestVersion)} 更新内容`;
+    action.innerHTML = `发现新版本 v${escapeHtml(latestVersion)} <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M8 5h7v7M15 5 5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    action.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (updateInfo.htmlUrl) {
+        window.open(updateInfo.htmlUrl, "_blank", "noopener,noreferrer");
+      }
+    });
+    action.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        action.click();
+      }
+    });
+    banner.appendChild(action);
+  }
+
+  function checkAiBotExtensionUpdate() {
+    const banner = document.querySelector(`.${SETTINGS_PANEL_CLASS} .better-settings__version-banner`);
+    if (!banner) {
+      return;
+    }
+    // 已有检测结果先渲染（缓存命中时不重复请求）
+    const cached = readVersionCheckCache();
+    if (cached) {
+      renderVersionUpdateBanner(banner, cached);
+    }
+    if (cached || !window.fetch) {
+      return;
+    }
+    fetchLatestRelease().then((release) => {
+      const updateInfo = {
+        ...release,
+        latestTag: release.tagName
+      };
+      writeVersionCheckCache(updateInfo);
+      renderVersionUpdateBanner(banner, updateInfo);
+    }).catch(() => {
+      // 请求失败静默，下次打开面板再试
+    });
+  }
+
   function renderSettingsPanel() {
     const panel = document.querySelector(`.${SETTINGS_PANEL_CLASS}`);
     if (!panel) {
@@ -227,6 +359,10 @@
       syncAiConnectionDot("aiBot", aiBotSettings);
       loadCachedAiBotModelOptions(panel);
     }
+    if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS) {
+      updateAiBotLogFilterCount();
+    }
+    checkAiBotExtensionUpdate();
     repositionSettingsPanelIfOpen();
   }
 
