@@ -692,9 +692,10 @@
         throw new Error(data?.message || data?.msg || data?.error || "消息查询失败");
       }
       const rawMessages = data?.result?.messages || data?.result?.list || data?.result?.Lists || data?.messages || [];
+      const noMore = data?.result?.no_more === true || data?.no_more === true;
       return {
         messages: normalizeReplyMessages(rawMessages, { tab }),
-        hasMore: Array.isArray(rawMessages) && rawMessages.length >= limit
+        hasMore: !noMore && Array.isArray(rawMessages) && rawMessages.length >= limit
       };
     });
   }

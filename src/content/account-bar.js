@@ -28,6 +28,19 @@
       level: Number(levelInfo.level || 0),
       exp: Number(levelInfo.exp || info.exp || 0),
       maxExp: Number(levelInfo.max_exp || info.max_exp || 0),
+      gotLikes: Number(findFirstFieldDeep(data, [
+        "digg_num",
+        "digg_count",
+        "digg_total",
+        "liked_num",
+        "liked_count",
+        "like_total",
+        "praise_num",
+        "praise_count",
+        "award_num",
+        "total_digg",
+        "likes_count"
+      ])) || 0,
       medals: medals.slice(0, 12).map((medal) => ({
         name: String(medal?.name || medal?.medal_name || ""),
         icon: String(medal?.icon || medal?.image || medal?.img || ""),
@@ -76,6 +89,7 @@
         level: 0,
         exp: 0,
         maxExp: 0,
+        gotLikes: 0,
         medals: [],
         cachedAt: 0
       };
@@ -173,7 +187,11 @@
     name.textContent = profile.username || "小黑盒用户";
     // 仅在能稳定解析出等级/经验时才展示，否则隐藏
     const hasProgress = profile.level > 0 || profile.exp > 0;
-    meta.innerHTML = hasProgress ? renderAccountProgress(profile) : "";
+    const progressHtml = hasProgress ? renderAccountProgress(profile) : "";
+    const likesHtml = profile.gotLikes > 0
+      ? `<span class="better-settings__account-likes" title="获赞总数">获赞 ${escapeHtml(profile.gotLikes)}</span>`
+      : "";
+    meta.innerHTML = [progressHtml, likesHtml].filter(Boolean).join("");
     medalsRow.innerHTML = profile.medals.length ? renderAccountMedals(profile) : "";
   }
 

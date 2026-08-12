@@ -262,8 +262,21 @@
   }
 
   function getAwardMessageCount(message, actors) {
-    const raw = Number(message?.comment_award_num || message?.link_award_num || actors?.length || 0);
-    return Number.isFinite(raw) && raw > 0 ? raw : (actors?.length || 0);
+    const raw = Number(findFirstFieldDeep(message, [
+      "comment_award_num",
+      "link_award_num",
+      "award_num",
+      "digg_num",
+      "digg_count",
+      "support_num",
+      "support_count",
+      "praise_num",
+      "like_num",
+      "liked_num",
+      "like_count"
+    ]));
+    const fallback = actors?.length || 0;
+    return Number.isFinite(raw) && raw > 0 ? raw : fallback;
   }
 
   function getAwardMessageUserName(actors, awardCount) {

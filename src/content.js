@@ -7314,6 +7314,13 @@
         font-size: 12px;
         color: rgba(0, 0, 0, 0.55);
       }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-likes {
+        flex: 0 0 auto;
+        color: #ff8a00;
+        font-size: 11px;
+        font-weight: 600;
+      }
       .${SETTINGS_PANEL_CLASS} .better-settings__account-level {
         padding: 0 6px;
         border-radius: 4px;
@@ -8952,8 +8959,21 @@
   }
 
   function getAwardMessageCount(message, actors) {
-    const raw = Number(message?.comment_award_num || message?.link_award_num || actors?.length || 0);
-    return Number.isFinite(raw) && raw > 0 ? raw : (actors?.length || 0);
+    const raw = Number(findFirstFieldDeep(message, [
+      "comment_award_num",
+      "link_award_num",
+      "award_num",
+      "digg_num",
+      "digg_count",
+      "support_num",
+      "support_count",
+      "praise_num",
+      "like_num",
+      "liked_num",
+      "like_count"
+    ]));
+    const fallback = actors?.length || 0;
+    return Number.isFinite(raw) && raw > 0 ? raw : fallback;
   }
 
   function getAwardMessageUserName(actors, awardCount) {
@@ -15204,6 +15224,19 @@
       level: Number(levelInfo.level || 0),
       exp: Number(levelInfo.exp || info.exp || 0),
       maxExp: Number(levelInfo.max_exp || info.max_exp || 0),
+      gotLikes: Number(findFirstFieldDeep(data, [
+        "digg_num",
+        "digg_count",
+        "digg_total",
+        "liked_num",
+        "liked_count",
+        "like_total",
+        "praise_num",
+        "praise_count",
+        "award_num",
+        "total_digg",
+        "likes_count"
+      ])) || 0,
       medals: medals.slice(0, 12).map((medal) => ({
         name: String(medal?.name || medal?.medal_name || ""),
         icon: String(medal?.icon || medal?.image || medal?.img || ""),
@@ -15252,6 +15285,7 @@
         level: 0,
         exp: 0,
         maxExp: 0,
+        gotLikes: 0,
         medals: [],
         cachedAt: 0
       };
@@ -15349,7 +15383,11 @@
     name.textContent = profile.username || "小黑盒用户";
     // 仅在能稳定解析出等级/经验时才展示，否则隐藏
     const hasProgress = profile.level > 0 || profile.exp > 0;
-    meta.innerHTML = hasProgress ? renderAccountProgress(profile) : "";
+    const progressHtml = hasProgress ? renderAccountProgress(profile) : "";
+    const likesHtml = profile.gotLikes > 0
+      ? `<span class="better-settings__account-likes" title="获赞总数">获赞 ${escapeHtml(profile.gotLikes)}</span>`
+      : "";
+    meta.innerHTML = [progressHtml, likesHtml].filter(Boolean).join("");
     medalsRow.innerHTML = profile.medals.length ? renderAccountMedals(profile) : "";
   }
 
@@ -18171,9 +18209,10 @@
         throw new Error(data?.message || data?.msg || data?.error || "消息查询失败");
       }
       const rawMessages = data?.result?.messages || data?.result?.list || data?.result?.Lists || data?.messages || [];
+      const noMore = data?.result?.no_more === true || data?.no_more === true;
       return {
         messages: normalizeReplyMessages(rawMessages, { tab }),
-        hasMore: Array.isArray(rawMessages) && rawMessages.length >= limit
+        hasMore: !noMore && Array.isArray(rawMessages) && rawMessages.length >= limit
       };
     });
   }

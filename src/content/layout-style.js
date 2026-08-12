@@ -6079,6 +6079,13 @@
         font-size: 12px;
         color: rgba(0, 0, 0, 0.55);
       }
+
+      .${SETTINGS_PANEL_CLASS} .better-settings__account-likes {
+        flex: 0 0 auto;
+        color: #ff8a00;
+        font-size: 11px;
+        font-weight: 600;
+      }
       .${SETTINGS_PANEL_CLASS} .better-settings__account-level {
         padding: 0 6px;
         border-radius: 4px;
