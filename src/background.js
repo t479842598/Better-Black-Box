@@ -9,6 +9,7 @@
   const BLOCKED_KEYWORDS_STORAGE_KEY = "better-xiaoheihe-blocked-keywords";
   const LEVEL_FILTERS_STORAGE_KEY = "better-xiaoheihe-level-filters";
   const COMMENT_PREVIEW_SORT_STORAGE_KEY = "better-xiaoheihe-comment-preview-sort";
+  const COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY = "better-xiaoheihe-comment-preview-only-owner";
   const AI_SETTINGS_STORAGE_KEY = "better-xiaoheihe-ai-settings";
   const AI_MODEL_CACHE_STORAGE_KEY = "better-xiaoheihe-ai-model-cache";
   const AI_BOT_SETTINGS_STORAGE_KEY = "better-xiaoheihe-ai-bot-settings";
@@ -27,8 +28,18 @@
   const UI_STATE_STORAGE_KEY = "better-xiaoheihe-ui-state";
   const COMMENT_EMOJI_USAGE_STORAGE_KEY = "better-xiaoheihe-comment-emoji-usage";
   // 版本信息：发布时与 manifest.json 的 version 同步更新，用于设置面板顶部展示“已更新”提示。
-  const EXTENSION_VERSION = "1.6";
-  const EXTENSION_BUILD_DATE = "2026-08-12";
+  const EXTENSION_VERSION = "1.7";
+  const EXTENSION_BUILD_DATE = "2026-08-14";
+  // 当前版本更新内容（设置面板点击版本号弹窗展示；在线优先拉取 CHANGELOG.md，离线回退此内置文案；发布时同步更新）。
+  const CURRENT_VERSION_CHANGELOG = [
+    "### v1.7",
+    "",
+    "- 新增：AI 建议回复——评论预览回复表单新增 ✨ AI 按钮，基于帖子内容与回复目标评论生成 3 条候选回复（认真客观 / 轻松幽默 / 简短直接三种风格），点击直接发送；支持重新生成。",
+    "- 新增：评论区观点总结——工具栏 📊 按钮，AI 总结评论区主要观点、争议点、高赞评论与整体风向。",
+    "- 新增：评论预览只看楼主开关与主评论楼层号显示。",
+    "- 新增：设置面板点击版本号可查看当前版本更新内容（在线拉取 CHANGELOG，离线回退内置文案）。",
+    "- 优化：AI 建议回复改为点击候选直接发送，无需二次确认。"
+  ].join("\n");
   const FEED_LAYOUT_SETTINGS_STORAGE_KEY = "better-xiaoheihe-feed-layout-settings";
   const HOT_SEARCH_DISABLED_STORAGE_KEY = "better-xiaoheihe-hot-search-disabled";
   const ACCOUNT_PROFILE_STORAGE_KEY = "better-xiaoheihe-account-profile";
@@ -46,6 +57,7 @@
     BLOCKED_KEYWORDS_STORAGE_KEY,
     LEVEL_FILTERS_STORAGE_KEY,
     COMMENT_PREVIEW_SORT_STORAGE_KEY,
+    COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY,
     AI_BOT_SETTINGS_STORAGE_KEY,
     AI_BOT_LOGS_STORAGE_KEY,
     AI_BOT_MESSAGE_LOGS_STORAGE_KEY,
@@ -84,6 +96,8 @@
   const SANITIZED_COOKIE_RULE_RESPONSE_EVENT = "better-xiaoheihe-sanitized-cookie-rule-response";
 
   const AI_BOT_LOG_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+  // 日志条数上限：AI Bot 轮询频繁，2000 条足够展示且避免 storage 配额超限。
+  const AI_BOT_LOG_MAX_ITEMS = 2000;
   const AI_BOT_MIN_FEED_POLL_MINUTES = 3;
   const AI_BOT_DEFAULT_REPLY_LIMIT_PER_LINK_USER = 5;
   const AI_BOT_DEFAULT_GLOBAL_HISTORY_LIMIT = 20;
@@ -294,7 +308,13 @@
 
   function storageSet(values) {
     return new Promise((resolve) => {
-      chrome.storage.local.set(values, resolve);
+      chrome.storage.local.set(values, () => {
+        if (chrome.runtime?.lastError) {
+          // 写入失败（如配额超限）时静默降级，避免 Unchecked runtime.lastError 刷屏。
+          console.warn("[better-xiaoheihe] storage 写入失败", chrome.runtime.lastError?.message || "");
+        }
+        resolve();
+      });
     });
   }
 
@@ -323,6 +343,28 @@
     }
   }
 
+  // 深度截断日志 detail/entry 的字符串字段，防止单条日志过大撑爆 storage。
+  function truncateLogStrings(value, maxLength = 2000) {
+    if (typeof value === "string") {
+      return value.slice(0, maxLength);
+    }
+    if (Array.isArray(value)) {
+      return value.slice(0, 20).map((item) => truncateLogStrings(item, maxLength));
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, truncateLogStrings(item, maxLength)]));
+    }
+    return value;
+  }
+
+  function compactAiBotLogDetail(detail) {
+    return truncateLogStrings(detail, 2000);
+  }
+
+  function compactAiBotLogEntry(entry) {
+    return truncateLogStrings(entry || {}, 4000);
+  }
+
   async function appendAiBotLog(level, message, detail = {}) {
     const now = Date.now();
     const result = await storageGet(AI_BOT_LOGS_STORAGE_KEY);
@@ -334,10 +376,10 @@
         timeText: formatLogTime(now),
         level: ["error", "warn", "success"].includes(level) ? level : "info",
         message: String(message || ""),
-        detail: detail && typeof detail === "object" ? detail : {}
+        detail: detail && typeof detail === "object" ? compactAiBotLogDetail(detail) : {}
       },
       ...currentLogs.filter((item) => !item?.skipped && Number(item?.timestamp || 0) >= now - AI_BOT_LOG_RETENTION_MS)
-    ].slice(0, 5000);
+    ].slice(0, AI_BOT_LOG_MAX_ITEMS);
     await storageSet({ [AI_BOT_LOGS_STORAGE_KEY]: logs });
   }
 
@@ -352,10 +394,10 @@
         id: `${now}-${Math.random().toString(16).slice(2)}`,
         timestamp: now,
         timeText: formatLogTime(now),
-        ...entry
+        ...compactAiBotLogEntry(entry)
       },
       ...currentLogs.filter((item) => Number(item?.timestamp || 0) >= now - AI_BOT_LOG_RETENTION_MS)
-    ].slice(0, 5000);
+    ].slice(0, AI_BOT_LOG_MAX_ITEMS);
     await storageSet({ [AI_BOT_MESSAGE_LOGS_STORAGE_KEY]: logs });
   }
 
@@ -908,7 +950,12 @@
   }
 
   async function fetchJson(url, options) {
-    const response = await fetch(url, options);
+    const response = await fetch(url, {
+      ...options,
+      // 请求超时控制：AI 提供方长时间无响应时及时失败，
+      // 返回明确错误而非挂起直到 content 侧 60s 泛化超时。
+      signal: AbortSignal.timeout(55000)
+    });
     const data = await readJsonResponse(response);
     if (!response.ok) {
       throw new Error(String(getProviderError(data, response)));
@@ -1093,9 +1140,11 @@
         content: String(content || "").trim() || "模型没有返回内容"
       };
     } catch (error) {
+      const message = String(error?.message || error || "AI 请求失败");
+      const isTimeout = error?.name === "TimeoutError" || /timeout|aborted/i.test(message);
       return {
         ok: false,
-        error: error?.message || "AI 请求失败"
+        error: isTimeout ? "AI 请求超时，请检查网络或 AI 服务地址" : message
       };
     }
   }
@@ -2200,6 +2249,67 @@
     return validItems;
   }
 
+  // 入队前压缩 context：保留 AI 回复所需的评论字段（id/文本/用户名/点赞数），
+  // 丢弃图片、完整用户详情等大字段，避免 50 条队列把 chrome.storage 配额打满。
+  function compactAiBotContext(context) {
+    const compactGroups = (Array.isArray(context?.groups) ? context.groups : []).map((group) => ({
+      root: compactAiBotComment(group?.root),
+      replies: (Array.isArray(group?.replies) ? group.replies : []).map(compactAiBotComment)
+    })).filter((group) => group.root);
+    return {
+      detail: compactAiBotLinkDetail(context?.detail),
+      groups: compactGroups
+    };
+  }
+
+  function compactAiBotComment(comment) {
+    if (!comment || typeof comment !== "object") {
+      return comment;
+    }
+    const user = comment.user || {};
+    return {
+      comment_id: comment.comment_id || comment.commentid || comment.id || comment.cid || "",
+      text: String(comment.text || comment.content || "").slice(0, 2000),
+      user: {
+        username: user.username || "",
+        nickname: user.nickname || ""
+      },
+      up: getCommentUpCount(comment)
+    };
+  }
+
+  function compactAiBotLinkDetail(detail) {
+    if (!detail || typeof detail !== "object") {
+      return detail || {};
+    }
+    return {
+      title: String(detail.title || "").slice(0, 500),
+      content: String(detail.content || "").slice(0, 12000),
+      author: String(detail.author || detail.authorName || "").slice(0, 200),
+      authorId: String(detail.authorId || "").slice(0, 100),
+      topics: Array.isArray(detail.topics) ? detail.topics.slice(0, 20) : detail.topics
+    };
+  }
+
+  // 压缩消息对象：保留结构，仅深度截断字符串字段，避免入队后 storage 超限。
+  function compactAiBotMessage(message, maxStringLength = 1000) {
+    if (message === null || typeof message !== "object") {
+      return message;
+    }
+    if (Array.isArray(message)) {
+      return message.slice(0, 50).map((item) => compactAiBotMessage(item, maxStringLength));
+    }
+    return Object.fromEntries(Object.entries(message).map(([key, value]) => {
+      if (typeof value === "string") {
+        return [key, value.slice(0, maxStringLength)];
+      }
+      if (value && typeof value === "object") {
+        return [key, compactAiBotMessage(value, maxStringLength)];
+      }
+      return [key, value];
+    }));
+  }
+
   async function enqueueReplyMessage(message, context, replyCommentId, messageSource, emojiCodes) {
     const queue = await cleanupReplyQueue();
     const messageId = String(message?.message_id || "");
@@ -2208,14 +2318,12 @@
       return false;
     }
     const now = Date.now();
+    const compactContext = compactAiBotContext(context);
     const queueItem = {
       messageId,
       queuedAt: now,
-      message,
-      context: {
-        detail: context.detail,
-        groups: context.groups
-      },
+      message: compactAiBotMessage(message),
+      context: compactContext,
       replyCommentId,
       messageSource,
       emojiCodes,
@@ -3440,6 +3548,7 @@
 
     aiBotRunning = true;
     try {
+      await markAiBotPollHeartbeat();
       if (!await hasAiBotConsent()) {
         return { ok: false, error: "尚未确认 AI Bot 风险授权" };
       }
@@ -3630,6 +3739,60 @@
       }
       chrome.alarms.get(name, (alarm) => resolve(alarm || null));
     });
+  }
+
+  // AI Bot 轮询心跳：每次轮询执行时记录时间，供启动自愈判断“长时间未轮询”。
+  async function markAiBotPollHeartbeat() {
+    const result = await storageGet(AI_BOT_RUNTIME_STORAGE_KEY);
+    await storageSet({
+      [AI_BOT_RUNTIME_STORAGE_KEY]: {
+        ...(result[AI_BOT_RUNTIME_STORAGE_KEY] || {}),
+        lastPollAt: Date.now()
+      }
+    });
+  }
+
+  // 自愈检查：当 Service Worker 被唤醒（启动/消息/页面活动）时，
+  // 若发现 AI Bot alarm 丢失或长时间未轮询，重建 alarm 并立即补跑一次。
+  // 解决 MV3 下 Service Worker 挂起导致 alarm 失效、自动回复/评论停摆的问题。
+  async function ensureAiBotAlarmHealthy() {
+    try {
+      if (!AI_BOT_FEATURE_ENABLED) {
+        return;
+      }
+      const settings = await readAiBotSettings();
+      const consentAccepted = await hasAiBotConsent();
+      if (!consentAccepted || !settings.enabled) {
+        return;
+      }
+      const result = await storageGet(AI_BOT_RUNTIME_STORAGE_KEY);
+      const runtime = result[AI_BOT_RUNTIME_STORAGE_KEY] || {};
+      const lastPollAt = Number(runtime.lastPollAt || 0);
+      const gapMs = Date.now() - lastPollAt;
+      // 轮询间隔拉大（服务不可用）时阈值放宽，避免每次唤醒都重复补跑；
+      // 默认按 pollMinutes 的 10 倍判定，至少 10 分钟。
+      const healthyGapMs = Math.max(10, Number(settings.pollMinutes || 1) * 10) * 60 * 1000;
+      const pollAlarm = await getAiBotAlarm(AI_BOT_ALARM_NAME);
+      const needsHeal = !pollAlarm || (lastPollAt > 0 && gapMs > healthyGapMs);
+      if (!needsHeal) {
+        return;
+      }
+      await appendAiBotLog("warn", "检测到 AI Bot 定时任务中断，正在重建并补跑", {
+        alarmExists: Boolean(pollAlarm),
+        lastPollAt: lastPollAt ? formatLogTime(lastPollAt) : "",
+        gapMinutes: lastPollAt ? Math.floor(gapMs / 60000) : 0,
+        healthyGapMinutes: Math.floor(healthyGapMs / 60000)
+      });
+      await syncAiBotAlarm({ reset: true });
+      await markAiBotPollHeartbeat();
+      runAiBotPoll("self-heal").catch(() => {});
+      if (settings.commentHomeFeed) {
+        runAiBotFeedComment().catch(() => {});
+      }
+      runAiBotQueueConsumer().catch(() => {});
+    } catch (error) {
+      // 自愈失败不影响主流程
+    }
   }
 
   async function createAiBotAlarm(name, alarmInfo, reset) {
@@ -3988,11 +4151,13 @@
     syncAiBotAlarm({ reset: true });
     syncMentionNotifyAlarm({ reset: true });
     bindMentionNotifyNotificationActions();
+    ensureAiBotAlarmHealthy();
   });
 
   chrome.runtime.onStartup?.addListener(() => {
     syncAiBotAlarm();
     syncMentionNotifyAlarm();
+    ensureAiBotAlarmHealthy();
   });
 
   chrome.alarms?.onAlarm?.addListener((alarm) => {
@@ -4066,6 +4231,7 @@
 
     if (message?.type === "better-xiaoheihe-ai-bot-status") {
       getAiBotStatus().then(sendResponse);
+      ensureAiBotAlarmHealthy();
       return true;
     }
 
@@ -4074,6 +4240,7 @@
         sendResponse({ ok: false, disabled: true, error: "AI Bot 功能已停用" });
         return false;
       }
+      ensureAiBotAlarmHealthy();
       runAiBotPoll("manual").then(sendResponse);
       return true;
     }
@@ -4105,5 +4272,6 @@
   });
 
   syncAiBotAlarm();
+  ensureAiBotAlarmHealthy();
   // END src\background\runtime.js
 })();

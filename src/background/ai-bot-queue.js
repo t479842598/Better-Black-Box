@@ -49,6 +49,67 @@
     return validItems;
   }
 
+  // 入队前压缩 context：保留 AI 回复所需的评论字段（id/文本/用户名/点赞数），
+  // 丢弃图片、完整用户详情等大字段，避免 50 条队列把 chrome.storage 配额打满。
+  function compactAiBotContext(context) {
+    const compactGroups = (Array.isArray(context?.groups) ? context.groups : []).map((group) => ({
+      root: compactAiBotComment(group?.root),
+      replies: (Array.isArray(group?.replies) ? group.replies : []).map(compactAiBotComment)
+    })).filter((group) => group.root);
+    return {
+      detail: compactAiBotLinkDetail(context?.detail),
+      groups: compactGroups
+    };
+  }
+
+  function compactAiBotComment(comment) {
+    if (!comment || typeof comment !== "object") {
+      return comment;
+    }
+    const user = comment.user || {};
+    return {
+      comment_id: comment.comment_id || comment.commentid || comment.id || comment.cid || "",
+      text: String(comment.text || comment.content || "").slice(0, 2000),
+      user: {
+        username: user.username || "",
+        nickname: user.nickname || ""
+      },
+      up: getCommentUpCount(comment)
+    };
+  }
+
+  function compactAiBotLinkDetail(detail) {
+    if (!detail || typeof detail !== "object") {
+      return detail || {};
+    }
+    return {
+      title: String(detail.title || "").slice(0, 500),
+      content: String(detail.content || "").slice(0, 12000),
+      author: String(detail.author || detail.authorName || "").slice(0, 200),
+      authorId: String(detail.authorId || "").slice(0, 100),
+      topics: Array.isArray(detail.topics) ? detail.topics.slice(0, 20) : detail.topics
+    };
+  }
+
+  // 压缩消息对象：保留结构，仅深度截断字符串字段，避免入队后 storage 超限。
+  function compactAiBotMessage(message, maxStringLength = 1000) {
+    if (message === null || typeof message !== "object") {
+      return message;
+    }
+    if (Array.isArray(message)) {
+      return message.slice(0, 50).map((item) => compactAiBotMessage(item, maxStringLength));
+    }
+    return Object.fromEntries(Object.entries(message).map(([key, value]) => {
+      if (typeof value === "string") {
+        return [key, value.slice(0, maxStringLength)];
+      }
+      if (value && typeof value === "object") {
+        return [key, compactAiBotMessage(value, maxStringLength)];
+      }
+      return [key, value];
+    }));
+  }
+
   async function enqueueReplyMessage(message, context, replyCommentId, messageSource, emojiCodes) {
     const queue = await cleanupReplyQueue();
     const messageId = String(message?.message_id || "");
@@ -57,14 +118,12 @@
       return false;
     }
     const now = Date.now();
+    const compactContext = compactAiBotContext(context);
     const queueItem = {
       messageId,
       queuedAt: now,
-      message,
-      context: {
-        detail: context.detail,
-        groups: context.groups
-      },
+      message: compactAiBotMessage(message),
+      context: compactContext,
       replyCommentId,
       messageSource,
       emojiCodes,

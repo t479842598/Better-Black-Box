@@ -9,6 +9,7 @@
   const BLOCKED_KEYWORDS_STORAGE_KEY = "better-xiaoheihe-blocked-keywords";
   const LEVEL_FILTERS_STORAGE_KEY = "better-xiaoheihe-level-filters";
   const COMMENT_PREVIEW_SORT_STORAGE_KEY = "better-xiaoheihe-comment-preview-sort";
+  const COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY = "better-xiaoheihe-comment-preview-only-owner";
   const AI_SETTINGS_STORAGE_KEY = "better-xiaoheihe-ai-settings";
   const AI_MODEL_CACHE_STORAGE_KEY = "better-xiaoheihe-ai-model-cache";
   const AI_BOT_SETTINGS_STORAGE_KEY = "better-xiaoheihe-ai-bot-settings";
@@ -27,8 +28,18 @@
   const UI_STATE_STORAGE_KEY = "better-xiaoheihe-ui-state";
   const COMMENT_EMOJI_USAGE_STORAGE_KEY = "better-xiaoheihe-comment-emoji-usage";
   // 版本信息：发布时与 manifest.json 的 version 同步更新，用于设置面板顶部展示“已更新”提示。
-  const EXTENSION_VERSION = "1.6";
-  const EXTENSION_BUILD_DATE = "2026-08-12";
+  const EXTENSION_VERSION = "1.7";
+  const EXTENSION_BUILD_DATE = "2026-08-14";
+  // 当前版本更新内容（设置面板点击版本号弹窗展示；在线优先拉取 CHANGELOG.md，离线回退此内置文案；发布时同步更新）。
+  const CURRENT_VERSION_CHANGELOG = [
+    "### v1.7",
+    "",
+    "- 新增：AI 建议回复——评论预览回复表单新增 ✨ AI 按钮，基于帖子内容与回复目标评论生成 3 条候选回复（认真客观 / 轻松幽默 / 简短直接三种风格），点击直接发送；支持重新生成。",
+    "- 新增：评论区观点总结——工具栏 📊 按钮，AI 总结评论区主要观点、争议点、高赞评论与整体风向。",
+    "- 新增：评论预览只看楼主开关与主评论楼层号显示。",
+    "- 新增：设置面板点击版本号可查看当前版本更新内容（在线拉取 CHANGELOG，离线回退内置文案）。",
+    "- 优化：AI 建议回复改为点击候选直接发送，无需二次确认。"
+  ].join("\n");
   const FEED_LAYOUT_SETTINGS_STORAGE_KEY = "better-xiaoheihe-feed-layout-settings";
   const HOT_SEARCH_DISABLED_STORAGE_KEY = "better-xiaoheihe-hot-search-disabled";
   const ACCOUNT_PROFILE_STORAGE_KEY = "better-xiaoheihe-account-profile";
@@ -46,6 +57,7 @@
     BLOCKED_KEYWORDS_STORAGE_KEY,
     LEVEL_FILTERS_STORAGE_KEY,
     COMMENT_PREVIEW_SORT_STORAGE_KEY,
+    COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY,
     AI_BOT_SETTINGS_STORAGE_KEY,
     AI_BOT_LOGS_STORAGE_KEY,
     AI_BOT_MESSAGE_LOGS_STORAGE_KEY,
@@ -84,6 +96,8 @@
   const SANITIZED_COOKIE_RULE_RESPONSE_EVENT = "better-xiaoheihe-sanitized-cookie-rule-response";
 
   const AI_BOT_LOG_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+  // 日志条数上限：AI Bot 轮询频繁，2000 条足够展示且避免 storage 配额超限。
+  const AI_BOT_LOG_MAX_ITEMS = 2000;
   const AI_BOT_MIN_FEED_POLL_MINUTES = 3;
   const AI_BOT_DEFAULT_REPLY_LIMIT_PER_LINK_USER = 5;
   const AI_BOT_DEFAULT_GLOBAL_HISTORY_LIMIT = 20;
@@ -386,6 +400,7 @@
   const capturedApiParams = {};
   let lastSavedApiParamsText = "";
   let hideCyComments = false;
+  let commentPreviewOnlyOwner = false;
   let commentPreviewSort = COMMENT_PREVIEW_SORTS.DEFAULT;
   let blockedKeywords = [];
   let levelFilters = normalizeLevelFilters({});
@@ -903,14 +918,16 @@
     const now = Date.now();
     return (Array.isArray(logs) ? logs : [])
       .filter((log) => Number(log?.timestamp || 0) >= now - AI_BOT_LOG_RETENTION_MS)
-      .sort((left, right) => Number(right?.timestamp || 0) - Number(left?.timestamp || 0));
+      .sort((left, right) => Number(right?.timestamp || 0) - Number(left?.timestamp || 0))
+      .slice(0, AI_BOT_LOG_MAX_ITEMS);
   }
 
   function normalizeAiBotMessageLogs(logs) {
     const now = Date.now();
     return (Array.isArray(logs) ? logs : [])
       .filter((log) => !log?.skipped && Number(log?.timestamp || 0) >= now - AI_BOT_LOG_RETENTION_MS)
-      .sort((left, right) => Number(right?.sentTimestamp || right?.timestamp || 0) - Number(left?.sentTimestamp || left?.timestamp || 0));
+      .sort((left, right) => Number(right?.sentTimestamp || right?.timestamp || 0) - Number(left?.sentTimestamp || left?.timestamp || 0))
+      .slice(0, AI_BOT_LOG_MAX_ITEMS);
   }
 
   function normalizeAiBotReplyQueue(queue) {
@@ -1139,6 +1156,9 @@
     hideCyComments = values[HIDE_CY_COMMENTS_STORAGE_KEY] === true
       || values[HIDE_CY_COMMENTS_STORAGE_KEY] === "1"
       || values[HIDE_CY_COMMENTS_STORAGE_KEY] === "true";
+    commentPreviewOnlyOwner = values[COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY] === true
+      || values[COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY] === "1"
+      || values[COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY] === "true";
     blockedKeywords = normalizeBlockedKeywords(values[BLOCKED_KEYWORDS_STORAGE_KEY]);
     levelFilters = normalizeLevelFilters(values[LEVEL_FILTERS_STORAGE_KEY]);
     commentPreviewSort = normalizeCommentPreviewSort(values[COMMENT_PREVIEW_SORT_STORAGE_KEY]);
@@ -1211,9 +1231,20 @@
     nextValues[AI_BOT_LOGS_STORAGE_KEY] = keysPresent[AI_BOT_LOGS_STORAGE_KEY]
       ? normalizeAiBotLogs(values[AI_BOT_LOGS_STORAGE_KEY])
       : [];
+    // 存量日志超过新上限时裁剪并回写，释放 storage 配额空间。
+    if (keysPresent[AI_BOT_LOGS_STORAGE_KEY]
+      && Array.isArray(values[AI_BOT_LOGS_STORAGE_KEY])
+      && values[AI_BOT_LOGS_STORAGE_KEY].length > nextValues[AI_BOT_LOGS_STORAGE_KEY].length) {
+      migrationValues[AI_BOT_LOGS_STORAGE_KEY] = nextValues[AI_BOT_LOGS_STORAGE_KEY];
+    }
     nextValues[AI_BOT_MESSAGE_LOGS_STORAGE_KEY] = keysPresent[AI_BOT_MESSAGE_LOGS_STORAGE_KEY]
       ? normalizeAiBotMessageLogs(values[AI_BOT_MESSAGE_LOGS_STORAGE_KEY])
       : [];
+    if (keysPresent[AI_BOT_MESSAGE_LOGS_STORAGE_KEY]
+      && Array.isArray(values[AI_BOT_MESSAGE_LOGS_STORAGE_KEY])
+      && values[AI_BOT_MESSAGE_LOGS_STORAGE_KEY].length > nextValues[AI_BOT_MESSAGE_LOGS_STORAGE_KEY].length) {
+      migrationValues[AI_BOT_MESSAGE_LOGS_STORAGE_KEY] = nextValues[AI_BOT_MESSAGE_LOGS_STORAGE_KEY];
+    }
     nextValues[AI_BOT_REPLY_QUEUE_STORAGE_KEY] = keysPresent[AI_BOT_REPLY_QUEUE_STORAGE_KEY]
       ? normalizeAiBotReplyQueue(values[AI_BOT_REPLY_QUEUE_STORAGE_KEY])
       : [];
@@ -3410,6 +3441,97 @@
         font-size: 11px;
         font-weight: 700;
         line-height: 16px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-badge--clickable {
+        cursor: pointer;
+        text-decoration: underline dotted;
+        text-underline-offset: 2px;
+        transition: filter 0.15s ease;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-badge--clickable:hover,
+      .${SETTINGS_PANEL_CLASS} .better-settings__version-badge--clickable:focus-visible {
+        filter: brightness(1.08);
+        outline: none;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__changelog-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483646;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(20, 25, 30, 0.45);
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__changelog-dialog {
+        display: flex;
+        flex-direction: column;
+        width: min(480px, calc(100vw - 48px));
+        max-height: 70vh;
+        border: 1px solid #e8ecf0;
+        border-radius: 10px;
+        background: #fff;
+        box-shadow: 0 16px 40px rgba(20, 25, 30, 0.18);
+        overflow: hidden;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__changelog-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 10px 14px;
+        border-bottom: 1px solid #f1f2f4;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__changelog-title {
+        color: #14191e;
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__changelog-close {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: #a8afb7;
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 1;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__changelog-close:hover {
+        background: rgba(20, 25, 30, 0.06);
+        color: #64696e;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__changelog-body {
+        overflow: auto;
+        padding: 12px 14px;
+        color: #32373d;
+        font-size: 13px;
+        line-height: 20px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__changelog-body h1,
+      .${SETTINGS_PANEL_CLASS} .better-settings__changelog-body h2,
+      .${SETTINGS_PANEL_CLASS} .better-settings__changelog-body h3 {
+        margin: 6px 0 4px;
+        color: #14191e;
+        font-size: 14px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__changelog-body ul,
+      .${SETTINGS_PANEL_CLASS} .better-settings__changelog-body ol {
+        margin: 4px 0;
+        padding-left: 18px;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__changelog-body li {
+        margin: 2px 0;
+      }
+      .${SETTINGS_PANEL_CLASS} .better-settings__changelog-body code {
+        padding: 0 3px;
+        border-radius: 3px;
+        background: rgba(20, 25, 30, 0.06);
+        font-family: inherit;
+        font-size: 0.92em;
       }
       .${SETTINGS_PANEL_CLASS} .better-settings__version-date {
         color: rgba(0, 0, 0, 0.55);
@@ -5748,6 +5870,19 @@
         vertical-align: top;
       }
 
+      .${HOME_LAYOUT_CLASS} .${PREVIEW_CLASS} .better-comment-preview__floor {
+        display: inline-block;
+        margin-right: 6px;
+        padding: 0 4px;
+        border-radius: 2px;
+        background: rgba(20, 25, 30, 0.06);
+        color: var(--color-font-3, #8c9199);
+        font-size: 10px;
+        line-height: 14px;
+        font-family: "SF Mono", Menlo, Consolas, monospace;
+        vertical-align: top;
+      }
+
       .${HOME_LAYOUT_CLASS} .${PREVIEW_CLASS} .better-comment-preview__level {
         display: inline-flex;
         flex: 0 0 auto;
@@ -6116,6 +6251,263 @@
       .${HOME_LAYOUT_CLASS} .${PREVIEW_CLASS} .better-comment-preview__image-upload:hover {
         background: var(--color-background-hover, rgba(20, 25, 30, 0.04));
         color: var(--color-font-2, #64696e);
+      }
+
+      .${HOME_LAYOUT_CLASS} .${PREVIEW_CLASS} .better-comment-preview__ai-suggest {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 28px;
+        flex: 0 0 auto;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 14px;
+        background: linear-gradient(135deg, rgba(124, 92, 255, 0.12), rgba(64, 148, 255, 0.12));
+        color: #6b4fe0;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .${HOME_LAYOUT_CLASS} .${PREVIEW_CLASS} .better-comment-preview__opinions,
+      .${HOME_LAYOUT_CLASS} .link-comment .better-comment-preview__opinions {
+        display: inline-flex;
+        align-items: center;
+        height: 24px;
+        flex: 0 0 auto;
+        padding: 0 8px;
+        border: 1px solid #e8ecf0;
+        border-radius: 12px;
+        background: transparent;
+        color: var(--color-font-3, #8c9199);
+        cursor: pointer;
+        font-size: 12px;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .${HOME_LAYOUT_CLASS} .${PREVIEW_CLASS} .better-comment-preview__opinions:hover:not(:disabled),
+      .${HOME_LAYOUT_CLASS} .link-comment .better-comment-preview__opinions:hover:not(:disabled) {
+        border-color: rgba(124, 92, 255, 0.4);
+        background: rgba(124, 92, 255, 0.08);
+        color: #6b4fe0;
+      }
+
+      .${HOME_LAYOUT_CLASS} .${PREVIEW_CLASS} .better-comment-preview__opinions:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .${HOME_LAYOUT_CLASS} .${PREVIEW_CLASS} .better-comment-preview__opinions.is-loading {
+        animation: better-ai-suggest-pulse 1s ease-in-out infinite;
+      }
+
+      .${HOME_LAYOUT_CLASS} .${PREVIEW_CLASS} .better-comment-preview__ai-suggest:hover:not(:disabled) {
+        background: linear-gradient(135deg, rgba(124, 92, 255, 0.2), rgba(64, 148, 255, 0.2));
+      }
+
+      .${HOME_LAYOUT_CLASS} .${PREVIEW_CLASS} .better-comment-preview__ai-suggest:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .${HOME_LAYOUT_CLASS} .${PREVIEW_CLASS} .better-comment-preview__ai-suggest.is-loading span {
+        animation: better-ai-suggest-pulse 1s ease-in-out infinite;
+      }
+
+      @keyframes better-ai-suggest-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-panel {
+        position: fixed;
+        left: var(--better-ai-suggest-left, 12px);
+        top: var(--better-ai-suggest-top, 12px);
+        z-index: 2147483646 !important;
+        width: min(340px, calc(100vw - 48px));
+        max-height: var(--better-ai-suggest-max-height, 320px);
+        overflow: auto;
+        padding: 10px;
+        border: 1px solid #dfe5eb;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 10px 24px rgba(20, 25, 30, 0.12);
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-panel-title {
+        color: #64696e;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-panel-close {
+        width: 22px;
+        height: 22px;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: #a8afb7;
+        cursor: pointer;
+        font-size: 16px;
+        line-height: 1;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-panel-close:hover {
+        background: var(--color-background-hover, rgba(20, 25, 30, 0.04));
+        color: #64696e;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-panel-error {
+        margin-bottom: 8px;
+        padding: 6px 8px;
+        border-radius: 4px;
+        background: rgba(214, 66, 66, 0.08);
+        color: #d64242;
+        font-size: 12px;
+        line-height: 18px;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-panel-error[hidden] {
+        display: none;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 8px 10px;
+        border: 1px solid #e8ecf0;
+        border-radius: 6px;
+        background: #fafbfc;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-item-style {
+        flex: 0 0 auto;
+        margin-top: 1px;
+        padding: 1px 7px;
+        border-radius: 8px;
+        background: rgba(124, 92, 255, 0.1);
+        color: #6b4fe0;
+        font-size: 11px;
+        line-height: 16px;
+        white-space: nowrap;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-item-text {
+        flex: 1 1 auto;
+        min-width: 0;
+        color: #32373d;
+        font-size: 13px;
+        line-height: 20px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-item-use {
+        flex: 0 0 auto;
+        height: 24px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #7c5cff, #4094ff);
+        color: #fff;
+        cursor: pointer;
+        font-size: 12px;
+        line-height: 24px;
+        white-space: nowrap;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-item-use:hover {
+        opacity: 0.9;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-panel-footer {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 8px;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-regenerate {
+        height: 26px;
+        padding: 0 12px;
+        border: 1px solid #dfe5eb;
+        border-radius: 13px;
+        background: #fff;
+        color: #64696e;
+        cursor: pointer;
+        font-size: 12px;
+        line-height: 24px;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-regenerate:hover {
+        background: var(--color-background-hover, rgba(20, 25, 30, 0.04));
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__opinions-panel {
+        position: fixed;
+        left: var(--better-ai-opinions-left, 12px);
+        top: var(--better-ai-opinions-top, 12px);
+        z-index: 2147483646 !important;
+        width: min(360px, calc(100vw - 48px));
+        max-height: var(--better-ai-opinions-max-height, 380px);
+        overflow: auto;
+        padding: 10px;
+        border: 1px solid #dfe5eb;
+        border-radius: 8px;
+        background: #fff;
+        box-shadow: 0 10px 24px rgba(20, 25, 30, 0.12);
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__opinions-content {
+        color: #32373d;
+        font-size: 13px;
+        line-height: 20px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__opinions-content h1,
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__opinions-content h2,
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__opinions-content h3 {
+        margin: 6px 0 4px;
+        font-size: 14px;
+        color: #14191e;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__opinions-content ul,
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__opinions-content ol {
+        margin: 4px 0;
+        padding-left: 18px;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__opinions-content li {
+        margin: 2px 0;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__opinions-content code {
+        padding: 0 3px;
+        border-radius: 3px;
+        background: rgba(20, 25, 30, 0.06);
+        font-family: inherit;
+        font-size: 0.92em;
       }
 
       .${HOME_LAYOUT_CLASS} .better-comment-preview__emoji-panel {
@@ -7801,6 +8193,223 @@
       }
       .${SETTINGS_PANEL_CLASS} .better-settings__ai-bot-breakdown-value.is-warn {
         color: #e5484d;
+      }
+
+      .better-topic-preview {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.55);
+        padding: 4vh 4vw;
+      }
+      .better-topic-preview__modal {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        width: min(96vw, 1000px);
+        max-height: 92vh;
+        border-radius: 12px;
+        overflow: hidden;
+        background: #fff;
+        color: #14191e;
+        box-shadow: 0 16px 50px rgba(0, 0, 0, 0.4);
+        font-size: 14px;
+        line-height: 1.65;
+      }
+      .better-topic-preview__header {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 16px 20px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+      }
+      .better-topic-preview__header-main {
+        flex: 1;
+        min-width: 0;
+      }
+      .better-topic-preview__title {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 700;
+        line-height: 1.4;
+      }
+      .better-topic-preview__author {
+        margin-top: 4px;
+        font-size: 12px;
+        opacity: 0.7;
+      }
+      .better-topic-preview__topics {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .better-topic-preview__topic {
+        display: inline-block;
+        padding: 2px 10px;
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.06);
+        font-size: 12px;
+      }
+      .better-topic-preview__close {
+        flex: 0 0 auto;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        font-size: 24px;
+        line-height: 1;
+        padding: 0 4px;
+        opacity: 0.7;
+      }
+      .better-topic-preview__close:hover {
+        opacity: 1;
+      }
+      .better-topic-preview__head-btns {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex: 0 0 auto;
+      }
+      .better-topic-preview__ai-summary {
+        display: inline-flex;
+        width: 26px;
+        height: 26px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #d8dfe6;
+        border-radius: 50%;
+        background: transparent;
+        color: #2775d1;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1;
+      }
+      .better-topic-preview__ai-summary:hover {
+        background: rgba(39, 117, 209, 0.08);
+        border-color: #2775d1;
+      }
+      .better-topic-preview__ai-summary.is-loading {
+        animation: better-ai-summary-spin 0.8s linear infinite;
+        color: #8a9299;
+        border-color: #d8dfe6;
+        cursor: default;
+      }
+      .better-topic-preview__ai-summary.is-complete {
+        border-color: #78c7a5;
+        background: #eaf8f1;
+        color: #0b806f;
+        font-size: 0;
+        animation: better-ai-summary-complete-pop 0.52s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+      }
+      .better-topic-preview__ai-summary.is-complete::after {
+        content: "✓";
+        font-size: 16px;
+        font-weight: 800;
+        line-height: 1;
+        animation: better-ai-summary-check-in 0.42s 0.08s cubic-bezier(0.22, 1.35, 0.36, 1) both;
+      }
+      .better-topic-preview__body {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: 16px 20px;
+      }
+      .better-topic-preview__content {
+        margin-bottom: 18px;
+      }
+      .better-topic-preview__text {
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .better-topic-preview__images {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+      }
+      .better-topic-preview__image {
+        width: 100%;
+        aspect-ratio: 1;
+        object-fit: cover;
+        border-radius: 8px;
+        cursor: zoom-in;
+      }
+      /* 单图占整行、双图并排：图片更大更清晰 */
+      .better-topic-preview__images.better-topic-preview__images--single {
+        grid-template-columns: minmax(0, 1fr);
+        max-width: 640px;
+      }
+      .better-topic-preview__images.better-topic-preview__images--double {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .better-topic-preview__loading,
+      .better-topic-preview__error {
+        padding: 24px 0;
+        color: #a8afb7;
+        text-align: center;
+      }
+      .better-topic-preview__retry {
+        display: block;
+        margin: 8px auto 0;
+        padding: 6px 16px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        border-radius: 6px;
+        background: transparent;
+        color: #2775d1;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      .better-topic-preview__retry:hover {
+        background: rgba(39, 117, 209, 0.08);
+      }
+      .better-topic-preview__comments-head {
+        margin: 6px 0 8px;
+        font-size: 13px;
+        font-weight: 600;
+        opacity: 0.85;
+      }
+      .better-topic-preview__footer {
+        display: flex;
+        justify-content: flex-end;
+        padding: 10px 20px;
+        border-top: 1px solid rgba(0, 0, 0, 0.08);
+        background: rgba(0, 0, 0, 0.02);
+      }
+      .better-topic-preview__open {
+        color: #2775d1;
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .better-topic-preview__open:hover {
+        text-decoration: underline;
+      }
+      /* 弹窗内评论始终显示：覆盖窄屏媒体查询里 .${HOME_LAYOUT_CLASS} .${PREVIEW_CLASS} 的 display:none */
+      .better-topic-preview .${PREVIEW_CLASS} {
+        display: flex !important;
+        align-self: stretch;
+        height: auto !important;
+        max-height: none !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        padding: 0;
+        border-left: 0;
+        flex-direction: column;
+      }
+      .better-topic-preview .${PREVIEW_CLASS} .better-comment-preview__list {
+        flex: 0 0 auto;
+        height: auto;
+        max-height: none;
+        overflow: visible;
+      }
+      .better-topic-preview .${PREVIEW_CLASS} .better-comment-preview__footer {
+        flex: 0 0 auto;
       }
 
     `;
@@ -9790,6 +10399,9 @@
         <input class="better-comment-preview__reply-file-input" type="file" accept="image/*" multiple>
         <div class="better-comment-preview__reply-form-footer">
           <div class="better-comment-preview__reply-tools">
+            <button class="better-comment-preview__ai-suggest" type="button" aria-label="AI 建议回复" title="AI 建议回复">
+              <span aria-hidden="true">✨ AI</span>
+            </button>
             <button class="better-comment-preview__emoji-toggle" type="button" aria-expanded="false" aria-label="表情" title="表情">
               <i class="hb-icon heybox-bbs_emoji_filled_24x24 better-comment-preview__emoji-toggle-icon" aria-hidden="true"></i>
             </button>
@@ -9862,13 +10474,13 @@
     return `${previewClass} comment-item__content${isCyComment(comment) ? " cy" : ""}`;
   }
 
-  function renderRootComment(comment, activeReplyTarget) {
+  function renderRootComment(comment, activeReplyTarget, floorNumber) {
     const user = comment.user || {};
     const commentId = getCommentId(comment);
     return `
       <div class="better-comment-preview__item" ${renderCommentReplyDataset(comment, commentId)} title="点击回复">
         <div class="better-comment-preview__body">
-          <div>${renderCommentUser(user, comment.is_link_owner === 1)}</div>
+          <div>${floorNumber ? `<span class="better-comment-preview__floor" title="楼层">#${escapeHtml(floorNumber)}</span>` : ""}${renderCommentUser(user, comment.is_link_owner === 1)}</div>
           <div class="better-comment-preview__text-row">
             <div class="better-comment-preview__text-wrapper">
               <div class="${getCommentContentClass(comment, "better-comment-preview__text")}" data-expanded="false">${renderCommentText(comment.text)}</div>
@@ -9939,11 +10551,11 @@
     `;
   }
 
-  function renderCommentGroup(group, activeReplyTarget) {
+  function renderCommentGroup(group, activeReplyTarget, floorNumber) {
     const rootCommentId = getCommentId(group.root);
     return `
       <div class="better-comment-preview__group">
-        ${renderRootComment(group.root, activeReplyTarget)}
+        ${renderRootComment(group.root, activeReplyTarget, floorNumber)}
         ${group.replies.map((reply) => renderReplyComment(reply, rootCommentId, activeReplyTarget)).join("")}
         ${renderReplyMoreButton(group)}
       </div>
@@ -10079,6 +10691,11 @@
     return `
       <div class="better-comment-preview__toolbar">
         ${renderCommentSortControls()}
+        <button class="better-comment-preview__opinions" type="button" title="AI 总结评论区观点">📊 观点总结</button>
+        <button class="better-comment-preview__only-owner-toggle" type="button" aria-pressed="${commentPreviewOnlyOwner ? "true" : "false"}" title="${commentPreviewOnlyOwner ? "显示全部评论" : "只看楼主"}">
+          <span class="better-comment-preview__cy-toggle-switch" aria-hidden="true"></span>
+          <span>只看楼主</span>
+        </button>
         <button class="better-comment-preview__cy-toggle" type="button" aria-pressed="${hideCyComments ? "true" : "false"}" title="${hideCyComments ? "显示插眼评论" : "屏蔽插眼评论"}">
           <span class="better-comment-preview__cy-toggle-switch" aria-hidden="true"></span>
           <span>屏蔽CY</span>
@@ -10086,6 +10703,13 @@
         ${hiddenCount ? `<span class="better-comment-preview__filtered-count" title="屏蔽CY的数量">${escapeHtml(hiddenCount)}</span>` : ""}
       </div>
     `;
+  }
+
+  function syncCommentOnlyOwnerControls() {
+    document.querySelectorAll(".better-comment-preview__only-owner-toggle").forEach((toggle) => {
+      toggle.setAttribute("aria-pressed", commentPreviewOnlyOwner ? "true" : "false");
+      toggle.setAttribute("title", commentPreviewOnlyOwner ? "显示全部评论" : "只看楼主");
+    });
   }
 
   function syncCyToggleControls() {
@@ -10129,6 +10753,13 @@
     return "";
   }
 
+  function applyCommentOnlyOwnerFilter(commentGroups) {
+    if (!commentPreviewOnlyOwner) {
+      return commentGroups;
+    }
+    return (commentGroups || []).filter((group) => isOwnerComment(group?.root));
+  }
+
   function renderCommentListContent(state, commentGroups, hiddenCount) {
     if (!commentGroups.length && state.loadingMore) {
       return '<div class="better-comment-preview__loading-more">评论加载中</div>';
@@ -10139,7 +10770,11 @@
     if (!commentGroups.length) {
       return '<div class="better-comment-preview__empty">暂无评论</div>';
     }
-    return `${commentGroups.map((group) => renderCommentGroup(group, state?.activeReplyTarget)).join("")}${renderCommentListFooter(state)}`;
+    const visibleGroups = applyCommentOnlyOwnerFilter(commentGroups);
+    if (commentPreviewOnlyOwner && !visibleGroups.length) {
+      return '<div class="better-comment-preview__empty">暂无评论（只看楼主）</div>';
+    }
+    return `${visibleGroups.map((group) => renderCommentGroup(group, state?.activeReplyTarget, getCommentGroupOriginalIndex(group) + 1)).join("")}${renderCommentListFooter(state)}`;
   }
 
   function isActivePostCommentTarget(state) {
@@ -10568,6 +11203,15 @@
     hideCyComments = isHidden;
     writeHideCyCommentsState(isHidden);
     syncCyToggleControls();
+    refreshAllCommentFilters();
+  }
+
+  function setCommentPreviewOnlyOwner(enabled) {
+    commentPreviewOnlyOwner = enabled;
+    saveLocalSettings({
+      [COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY]: enabled
+    });
+    syncCommentOnlyOwnerControls();
     refreshAllCommentFilters();
   }
 
@@ -12039,6 +12683,14 @@
         return;
       }
 
+      const onlyOwnerToggle = event.target.closest(".better-comment-preview__only-owner-toggle");
+      if (onlyOwnerToggle && preview.contains(onlyOwnerToggle)) {
+        event.preventDefault();
+        event.stopPropagation();
+        setCommentPreviewOnlyOwner(!commentPreviewOnlyOwner);
+        return;
+      }
+
       const sortButton = event.target.closest(".better-comment-preview__sort-option");
       if (sortButton && preview.contains(sortButton)) {
         event.preventDefault();
@@ -12155,6 +12807,14 @@
   function bindPreviewListScroll(preview) {
     const list = preview.querySelector(".better-comment-preview__list");
     if (!list) {
+      return;
+    }
+
+    // 弹窗预览场景（列表在自适应高度容器内，scrollHeight 恒等于 clientHeight）：
+    // 不在此绑定滚动加载，否则 rAF 首检会立即触发 loadMore 并级联拉取全部评论页；
+    // 弹窗场景由 topic-preview.js 自行监听外层滚动容器加载。
+    const inTopicPreview = Boolean(preview.closest(`.${TOPIC_PREVIEW_CLASS}`));
+    if (inTopicPreview) {
       return;
     }
 
@@ -12513,6 +13173,427 @@
   }
 
   // END src\content\feed.js
+  // BEGIN src\content\topic-preview.js
+// 信息流帖子弹窗预览：点击帖子卡片弹出浮层展示全文与评论，不跳转详情页。
+// 本文件由原入口文件等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
+  const TOPIC_PREVIEW_CLASS = "better-topic-preview";
+  const TOPIC_PREVIEW_OPEN_LINK_CLASS = "better-topic-preview__open";
+  const TOPIC_PREVIEW_RETRY_CLASS = "better-topic-preview__retry";
+  const TOPIC_PREVIEW_IMAGE_CLASS = "better-topic-preview__image";
+  const TOPIC_PREVIEW_AI_BUTTON_CLASS = "better-topic-preview__ai-summary";
+  // 卡片内已由其他功能接管的交互区域：点击这些区域不触发弹窗。
+  const TOPIC_PREVIEW_IGNORE_SELECTOR = [
+    "img",
+    "button",
+    "input",
+    "textarea",
+    "select",
+    `a.${TOPIC_PREVIEW_OPEN_LINK_CLASS}`,
+    ".better-comment-preview",
+    ".content-list__like",
+    ".bbs-new-style-bottom__like",
+    ".content-list__tag-item",
+    ".hb-cpt__content-tag",
+    ".bbs-new-style-bottom__rich-stack",
+    ".bbs-content__imgs-wrapper",
+    ".better-feed-fallback-image-wrap"
+  ].join(", ");
+  const TOPIC_PREVIEW_SCROLL_THRESHOLD = 120;
+  let currentTopicPreview = null;
+  let topicPreviewBound = false;
+
+  function isTopicPreviewEligiblePage() {
+    return isEnhancedPage() && !isLinkPage();
+  }
+
+  function closeTopicPreview() {
+    const overlay = currentTopicPreview;
+    if (!overlay) {
+      return;
+    }
+    overlay._abortController?.abort();
+    if (overlay._scrollHandler) {
+      overlay.querySelector(".better-topic-preview__body")?.removeEventListener("scroll", overlay._scrollHandler);
+    }
+    unlockPageScroll(TOPIC_PREVIEW_CLASS);
+    overlay.remove();
+    if (overlay._escHandler) {
+      document.removeEventListener("keydown", overlay._escHandler, true);
+    }
+    // 弹窗关闭时同步关闭其内打开的 AI 总结弹窗，避免残留悬浮窗。
+    closeAiSummaryModal();
+    currentTopicPreview = null;
+  }
+
+  function renderTopicPreviewImage(url, index) {
+    return `
+      <img class="${TOPIC_PREVIEW_IMAGE_CLASS}"
+        src="${escapeHtml(url)}"
+        alt="帖子图片 ${escapeHtml(index + 1)}"
+        loading="lazy"
+        data-preview-src="${escapeHtml(url)}">
+    `;
+  }
+
+  function renderTopicPreviewImages(imageUrls) {
+    const urls = Array.isArray(imageUrls) ? imageUrls.filter(isSafeCommentImageUrl) : [];
+    if (!urls.length) {
+      return "";
+    }
+    const layoutClass = urls.length === 1
+      ? " better-topic-preview__images--single"
+      : (urls.length === 2 ? " better-topic-preview__images--double" : "");
+    return `
+      <div class="better-topic-preview__images${layoutClass}" data-preview-urls="${escapeHtml(JSON.stringify(urls))}">
+        ${urls.map(renderTopicPreviewImage).join("")}
+      </div>
+    `;
+  }
+
+  function renderTopicPreviewDetail(overlay, detail) {
+    const titleEl = overlay.querySelector(".better-topic-preview__title");
+    const authorEl = overlay.querySelector(".better-topic-preview__author");
+    const topicsEl = overlay.querySelector(".better-topic-preview__topics");
+    const contentEl = overlay.querySelector(".better-topic-preview__content");
+    if (titleEl) {
+      titleEl.textContent = detail.title || "（无标题）";
+    }
+    if (authorEl) {
+      authorEl.textContent = detail.author ? `作者：${detail.author}` : "";
+      authorEl.hidden = !detail.author;
+    }
+    if (topicsEl) {
+      topicsEl.replaceWith(renderTopicPreviewTopicsNode(detail.topic));
+    }
+    if (contentEl) {
+      const contentText = String(detail.content || "").trim();
+      contentEl.innerHTML = `
+        ${contentText ? `<div class="better-topic-preview__text">${escapeHtml(contentText)}</div>` : ""}
+        ${renderTopicPreviewImages(detail.imageUrls)}
+      `;
+      bindTopicPreviewContentImages(overlay);
+    }
+  }
+
+  function renderTopicPreviewTopicsNode(topicText) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "better-topic-preview__topics";
+    const topics = String(topicText || "").split("\n").map((text) => text.trim()).filter(Boolean);
+    if (!topics.length) {
+      wrapper.hidden = true;
+      return wrapper;
+    }
+    wrapper.innerHTML = topics.map((topic) => (
+      `<span class="better-topic-preview__topic">${escapeHtml(topic)}</span>`
+    )).join("");
+    return wrapper;
+  }
+
+  function bindTopicPreviewContentImages(overlay) {
+    const imageGroup = overlay.querySelector(".better-topic-preview__images");
+    if (!imageGroup) {
+      return;
+    }
+
+    let imageUrls = [];
+    try {
+      imageUrls = JSON.parse(imageGroup.dataset.previewUrls || "[]");
+    } catch {
+      imageUrls = [];
+    }
+
+    overlay.querySelectorAll(`.${TOPIC_PREVIEW_IMAGE_CLASS}`).forEach((image) => {
+      image.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const index = Math.max(0, Array.from(imageGroup.children).indexOf(image));
+        openImageViewerFromUrls(imageUrls, index);
+      });
+    });
+  }
+
+  function renderTopicPreviewError(overlay, message) {
+    const contentEl = overlay.querySelector(".better-topic-preview__content");
+    if (contentEl) {
+      contentEl.innerHTML = `
+        <div class="better-topic-preview__error">加载失败：${escapeHtml(message || "未知错误")}</div>
+        <button class="${TOPIC_PREVIEW_RETRY_CLASS}" type="button">重新加载</button>
+      `;
+    }
+    // 错误时清掉评论区的"加载中"占位，避免与错误态并存。
+    const preview = overlay.querySelector(`.${PREVIEW_CLASS}`);
+    if (preview) {
+      preview.innerHTML = '<div class="better-comment-preview__empty">评论加载失败</div>';
+    }
+    const retryButton = overlay.querySelector(`.${TOPIC_PREVIEW_RETRY_CLASS}`);
+    if (retryButton) {
+      retryButton.addEventListener("click", () => {
+        const linkId = overlay.dataset.linkId;
+        if (!linkId || overlay.dataset.retrying === "1") {
+          return;
+        }
+        overlay.dataset.retrying = "1";
+        retryButton.disabled = true;
+        // 重试需重建 AbortController：旧的可能已被 abort，无法复用。
+        const abortController = new AbortController();
+        overlay._abortController = abortController;
+        loadTopicPreview(overlay, linkId, abortController);
+      });
+    }
+  }
+
+  // 弹窗内评论滚动加载：评论 list 在弹窗内不可滚动（高度自适应），
+  // 实际滚动容器是弹窗 body，因此把"接近底部加载下一页"绑定到 body。
+  function loadMoreTopicPreviewCommentsIfNearBottom(overlay) {
+    const body = overlay.querySelector(".better-topic-preview__body");
+    const preview = overlay.querySelector(`.${PREVIEW_CLASS}`);
+    if (!body || !preview) {
+      return;
+    }
+    const distanceToBottom = body.scrollHeight - body.scrollTop - body.clientHeight;
+    if (distanceToBottom > TOPIC_PREVIEW_SCROLL_THRESHOLD) {
+      return;
+    }
+    const linkId = overlay.dataset.linkId;
+    const state = commentCache.get(linkId);
+    if (!linkId || !state || state.loadingMore || !state.hasMore) {
+      return;
+    }
+    state.loadingMore = true;
+    commentCache.set(linkId, state);
+    fetchCommentPage(linkId, (state.page || 1) + 1);
+  }
+
+  function bindTopicPreviewScrollLoad(overlay) {
+    const body = overlay.querySelector(".better-topic-preview__body");
+    if (!body || overlay._scrollHandler) {
+      return;
+    }
+    const handler = () => {
+      loadMoreTopicPreviewCommentsIfNearBottom(overlay);
+    };
+    overlay._scrollHandler = handler;
+    body.addEventListener("scroll", handler, { passive: true });
+  }
+
+  function loadTopicPreview(overlay, linkId, abortController) {
+    delete overlay.dataset.retrying;
+    const retryButton = overlay.querySelector(`.${TOPIC_PREVIEW_RETRY_CLASS}`);
+    if (retryButton) {
+      retryButton.disabled = false;
+    }
+    const contentEl = overlay.querySelector(".better-topic-preview__content");
+    if (contentEl) {
+      contentEl.innerHTML = '<div class="better-topic-preview__loading">加载中…</div>';
+    }
+    const preview = overlay.querySelector(`.${PREVIEW_CLASS}`);
+    if (preview) {
+      preview.dataset.actionsBound = "0";
+      preview.innerHTML = '<div class="better-comment-preview__loading">评论加载中</div>';
+    }
+
+    fetchCommentPageData(linkId, 1)
+      .then((data) => {
+        if (abortController.signal.aborted || !overlay.isConnected) {
+          return;
+        }
+        if (data?.status !== "ok") {
+          renderTopicPreviewError(overlay, data?.error_message || data?.msg || "数据获取失败");
+          return;
+        }
+        // fetchCommentPageData 内部已缓存 linkDetail；评论组仅在弹窗打开前未加载过时写入，
+        // 避免把 feed 侧已滚动加载的多页评论回退为第 1 页（onlyIfEmpty）。
+        cacheCommentPageFromApiData(linkId, 1, data, { onlyIfEmpty: true });
+        const state = commentCache.get(linkId) || {};
+        renderTopicPreviewDetail(overlay, state.linkDetail || {});
+        if (preview) {
+          preview.dataset.commentCount = String(state.commentCount || 0);
+          renderPreview(preview, state);
+          bindTopicPreviewScrollLoad(overlay);
+          // 首屏若评论不足一屏，主动加载后续页（沿用 fetchCommentPage 的分页状态机）。
+          loadMoreTopicPreviewCommentsIfNearBottom(overlay);
+        }
+        // 同步 AI 按钮状态：已有缓存则显示"已完成"，可点击查看总结。
+        const aiButton = overlay.querySelector(`.${TOPIC_PREVIEW_AI_BUTTON_CLASS}`);
+        if (aiButton && !aiButton.classList.contains("is-loading")) {
+          setAiButtonComplete(aiButton, Boolean(aiSummaryCache.has(linkId)));
+        }
+      })
+      .catch((error) => {
+        if (abortController.signal.aborted || !overlay.isConnected) {
+          return;
+        }
+        renderTopicPreviewError(overlay, error?.message);
+      });
+  }
+
+  function summarizeTopicPreview(overlay, button, linkId) {
+    if (!linkId || button?.classList.contains("is-loading")) {
+      return;
+    }
+
+    const title = overlay.querySelector(".better-topic-preview__title")?.textContent?.trim() || "AI 总结";
+    if (aiSummaryCache.has(linkId)) {
+      const cachedSummary = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
+      setAiButtonComplete(button, true);
+      setAiSummaryModal(title, cachedSummary.content, false, linkId, cachedSummary.elapsedMs);
+      return;
+    }
+
+    if (!isAiConfigured()) {
+      openSettingsPanelTab(SETTINGS_TABS.AI);
+      return;
+    }
+
+    setAiButtonLoading(button, true);
+    const summaryStartTime = performance.now();
+    Promise.all([ensureSummaryContext(linkId), aiSettings.allowEmoji ? loadEmojis() : Promise.resolve(emojiCache)])
+      .then(([{ commentLines, linkDetail }]) => {
+        const payload = getLinkPageSummaryPayload(linkId, commentLines, linkDetail);
+        return requestAiChat([
+          {
+            role: "system",
+            content: buildAiSummarySystemPrompt()
+          },
+          {
+            role: "user",
+            content: payload
+          }
+        ]).then((summary) => ({ summary, payload }));
+      })
+      .then(({ summary, payload }) => {
+        const elapsedMs = performance.now() - summaryStartTime;
+        const content = cleanAiSummaryContent(summary, aiSettings.allowEmoji) || "没有生成总结。";
+        aiSummaryCache.set(linkId, { content, elapsedMs, payload, chatMessages: [] });
+        persistAiSummaryHistory(linkId, aiSummaryCache.get(linkId), { title });
+        setAiButtonComplete(button, true);
+        if (aiSettings.autoPopup) {
+          setAiSummaryModal(title, content, false, linkId, elapsedMs);
+        }
+      })
+      .catch((error) => {
+        setAiButtonComplete(button, false);
+        setAiSummaryModal(title, error?.message || "AI 总结失败", true, linkId, performance.now() - summaryStartTime);
+      })
+      .finally(() => {
+        setAiButtonLoading(button, false);
+      });
+  }
+
+  function openTopicPreview(linkId) {
+    closeTopicPreview();
+
+    const abortController = new AbortController();
+    const overlay = document.createElement("div");
+    overlay.className = TOPIC_PREVIEW_CLASS;
+    overlay.dataset.linkId = linkId;
+    overlay.innerHTML = `
+      <div class="better-topic-preview__modal" role="dialog" aria-modal="true" aria-label="帖子预览">
+        <header class="better-topic-preview__header">
+          <div class="better-topic-preview__header-main">
+            <h2 class="better-topic-preview__title">加载中…</h2>
+            <div class="better-topic-preview__author" hidden></div>
+            <div class="better-topic-preview__topics" hidden></div>
+          </div>
+          <div class="better-topic-preview__head-btns">
+            <button class="${TOPIC_PREVIEW_AI_BUTTON_CLASS}" type="button" title="AI 总结" aria-label="AI 总结">AI</button>
+            <button class="better-topic-preview__close" type="button" aria-label="关闭预览">×</button>
+          </div>
+        </header>
+        <div class="better-topic-preview__body">
+          <div class="better-topic-preview__content">加载中…</div>
+          <div class="better-topic-preview__comments-head">评论</div>
+          <aside class="${PREVIEW_CLASS}" data-link-id="${escapeHtml(linkId)}"></aside>
+        </div>
+        <footer class="better-topic-preview__footer">
+          <a class="${TOPIC_PREVIEW_OPEN_LINK_CLASS}" href="/app/bbs/link/${escapeHtml(linkId)}" target="_blank" rel="noopener">打开原帖 ›</a>
+        </footer>
+      </div>
+    `;
+    overlay._abortController = abortController;
+    document.body.appendChild(overlay);
+    currentTopicPreview = overlay;
+    lockPageScroll(TOPIC_PREVIEW_CLASS);
+    // 焦点移入弹窗（关闭按钮），配合 aria-modal 避免 Tab 焦点留在背景页面。
+    const closeButton = overlay.querySelector(".better-topic-preview__close");
+    closeButton?.focus();
+
+    // 捕获阶段注册：先于灯箱的冒泡阶段 keydown 监听执行。
+    // 若弹窗内打开了图片灯箱，本次 Esc 让给灯箱监听器（只关灯箱），
+    // 避免一次按键同时关掉灯箱与弹窗两层。
+    const onEsc = (event) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      const viewer = document.querySelector(`.${IMAGE_VIEWER_CLASS}`);
+      if (viewer && !viewer.hidden) {
+        return;
+      }
+      closeTopicPreview();
+    };
+    overlay._escHandler = onEsc;
+    document.addEventListener("keydown", onEsc, true);
+
+    overlay.querySelector(".better-topic-preview__close").addEventListener("click", closeTopicPreview);
+    const aiButton = overlay.querySelector(`.${TOPIC_PREVIEW_AI_BUTTON_CLASS}`);
+    if (aiButton) {
+      aiButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        summarizeTopicPreview(overlay, aiButton, linkId);
+      });
+    }
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) {
+        closeTopicPreview();
+      }
+    });
+
+    loadTopicPreview(overlay, linkId, abortController);
+  }
+
+  function bindTopicPreviewCapture() {
+    if (topicPreviewBound) {
+      return;
+    }
+    topicPreviewBound = true;
+    document.addEventListener("click", (event) => {
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+      if (!isTopicPreviewEligiblePage()) {
+        return;
+      }
+      // 修饰键/非左键点击放行：保留新标签页打开、中键等原生行为。
+      if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+        return;
+      }
+      if (currentTopicPreview?.contains(event.target)) {
+        return;
+      }
+      if (event.target.closest(`.${SETTINGS_PANEL_CLASS}, .${IMAGE_VIEWER_CLASS}, .${TOP_MENU_CLASS}`)) {
+        return;
+      }
+      const item = event.target.closest(FEED_ITEM_SELECTOR);
+      if (!item) {
+        return;
+      }
+      if (event.target.closest(TOPIC_PREVIEW_IGNORE_SELECTOR)) {
+        return;
+      }
+      const linkId = getLinkIdFromItem(item);
+      if (!linkId) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      openTopicPreview(linkId);
+    }, true);
+  }
+
+  bindTopicPreviewCapture();
+  // END src\content\topic-preview.js
   // BEGIN src\content\ai-summary.js
 // AI 总结弹窗、Markdown 渲染和总结请求编排。
 // 本文件由原入口文件等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
@@ -13397,9 +14478,511 @@
   }
 
   // END src\content\ai-summary.js
+  // BEGIN src\content\ai-comment-suggest.js
+// AI 建议回复：评论预览回复表单中根据帖子与回复目标生成多条候选回复。
+// 复用同 IIFE 作用域内的 AI 请求链路与帖子上下文构造（ai-summary.js / feed.js）。
+// 本文件由 scripts/build-source-bundles.ps1 合并进 src/content.js。
+
+  // 每个回复表单独立的进行中状态与浮层引用（表单销毁即释放）。
+  const aiSuggestFormState = new WeakMap();
+
+  const AI_SUGGEST_BUTTON_CLASS = "better-comment-preview__ai-suggest";
+  const AI_SUGGEST_PANEL_CLASS = "better-comment-preview__ai-suggest-panel";
+  const AI_SUGGEST_CANDIDATE_COUNT = 3;
+
+  function getAiSuggestFormState(form) {
+    let state = aiSuggestFormState.get(form);
+    if (!state) {
+      state = { loading: false, panel: null };
+      aiSuggestFormState.set(form, state);
+    }
+    return state;
+  }
+
+  // 从按钮所在 DOM 链定位 (form, linkId, commentId)
+  function locateAiSuggestContext(button) {
+    const form = button instanceof Element ? button.closest(".better-comment-preview__reply-form") : null;
+    if (!(form instanceof Element)) {
+      return null;
+    }
+    const preview = form.closest("[data-link-id]");
+    const linkId = preview?.dataset?.linkId || "";
+    const commentId = form.dataset.commentId || "";
+    if (!linkId) {
+      return null;
+    }
+    return { form, linkId, commentId };
+  }
+
+  function buildAiSuggestSystemPrompt() {
+    const emojiCodes = getAiSummaryEmojiCodes();
+    const emojiRule = aiSettings.allowEmoji
+      ? (emojiCodes.length
+        ? `可以自然使用 Unicode emoji 表情，也可以使用 0-2 个列表内小黑盒表情短码：${emojiCodes.join(" ")}。不要编造列表外的短码，不要输出纯数字方括号编号。`
+        : "可以自然使用 Unicode emoji 表情；没有可用小黑盒表情短码时，不要输出方括号表情短码。")
+      : "不要使用 Unicode emoji 表情，不要输出任何小黑盒表情短码或方括号表情。";
+    return [
+      "你是小黑盒社区的一名资深用户，熟悉游戏与数码话题的中文讨论氛围。",
+      `根据提供的帖子内容与回复目标，生成 ${AI_SUGGEST_CANDIDATE_COUNT} 条自然的候选回复。`,
+      "要求：",
+      `- 每条以 [SUGGEST_1]、[SUGGEST_2]、[SUGGEST_3] 开头单独成段；`,
+      "- 每条不超过 80 字，语气贴合帖子氛围与目标评论的观点（可认同、可补充、可温和反驳）；",
+      "- 三条候选风格各异：[SUGGEST_1] 认真客观，有理有据地表达观点；[SUGGEST_2] 轻松幽默，自然有趣不油腻；[SUGGEST_3] 简短直接，一句话点到为止；",
+      "- 像真实用户写的中文评论，不要声称自己体验过帖子未提供的信息；",
+      "- 不要输出 Markdown 格式，不要输出候选之外的任何解释文字。",
+      emojiRule
+    ].filter((part) => String(part || "").trim()).join("\n");
+  }
+
+  function getAiSuggestTargetCommentLine(linkId, commentId) {
+    if (!commentId || commentId === POST_COMMENT_TARGET_ID) {
+      return "我要对帖子发表一条主评论";
+    }
+    const { comment } = findCachedComment(linkId, commentId) || {};
+    if (!comment) {
+      return "";
+    }
+    const author = getCommentAuthor(comment);
+    const text = extractPlainCommentText(comment.text);
+    return text ? `我要回复的用户：${author}\n我要回复的评论：${text}` : "";
+  }
+
+  async function collectAiSuggestContext({ linkId, commentId }) {
+    const { commentLines, linkDetail } = await ensureSummaryContext(linkId);
+    const feedItem = findFeedItemByLinkId(linkId);
+    const payload = isLinkPage() && getCurrentLinkId() === linkId
+      ? getLinkPageSummaryPayload(linkId, commentLines, linkDetail)
+      : getFeedItemSummaryPayload(feedItem, linkId, commentLines, linkDetail);
+    const targetLine = getAiSuggestTargetCommentLine(linkId, commentId);
+    const payloadLines = targetLine ? `${payload}\n\n${targetLine}` : payload;
+    return [
+      { role: "system", content: buildAiSuggestSystemPrompt() },
+      { role: "user", content: payloadLines }
+    ];
+  }
+
+  // 解析 [SUGGEST_N] 分隔的候选；失败时整体作为单条兜底。
+  function splitAiSuggestions(content) {
+    const raw = String(content || "").trim();
+    if (!raw) {
+      return [];
+    }
+    const parts = raw.split(/\[SUGGEST_\d+\]/).map((part) => part.trim()).filter(Boolean);
+    const suggestions = parts.length >= 2 ? parts : (raw.length ? [raw] : []);
+    return suggestions.slice(0, AI_SUGGEST_CANDIDATE_COUNT);
+  }
+
+  function setAiSuggestButtonLoading(form, loading) {
+    const button = form?.querySelector(`.${AI_SUGGEST_BUTTON_CLASS}`);
+    if (button) {
+      button.disabled = loading;
+      button.classList.toggle("is-loading", loading);
+      button.setAttribute("aria-busy", loading ? "true" : "false");
+    }
+  }
+
+  function closeAiSuggestPanel(form) {
+    const state = getAiSuggestFormState(form);
+    if (state.panel) {
+      state.panel.remove();
+      state.panel = null;
+    }
+  }
+
+  // 浮层定位：fixed + CSS 变量（与表情面板同模式），避免被 preview 的 overflow 裁剪。
+  function positionAiSuggestPanel(form, panel) {
+    const button = form?.querySelector(`.${AI_SUGGEST_BUTTON_CLASS}`);
+    const anchor = button || form;
+    if (!(anchor instanceof Element)) {
+      return;
+    }
+    const anchorRect = anchor.getBoundingClientRect();
+    const panelWidth = Math.min(340, Math.max(240, window.innerWidth - 48));
+    const left = Math.min(
+      Math.max(12, anchorRect.left),
+      Math.max(12, window.innerWidth - panelWidth - 12)
+    );
+    const top = Math.max(12, anchorRect.top - panel.offsetHeight - 8);
+    const maxHeight = Math.max(120, Math.min(320, window.innerHeight - 24));
+    panel.style.setProperty("--better-ai-suggest-left", `${left}px`);
+    panel.style.setProperty("--better-ai-suggest-top", `${top}px`);
+    panel.style.setProperty("--better-ai-suggest-max-height", `${maxHeight}px`);
+  }
+
+  // 每条候选的风格标签（与提示词中的 [SUGGEST_N] 对应）。
+  const AI_SUGGEST_STYLE_LABELS = ["认真客观", "轻松幽默", "简短直接"];
+
+  function applyAiSuggestion(form, text) {
+    const editor = form?.querySelector(".better-comment-preview__reply-input");
+    if (!(editor instanceof Element)) {
+      return;
+    }
+    const preview = form.closest("[data-link-id]");
+    editor.innerText = text;
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: null }));
+    closeAiSuggestPanel(form);
+    // 直接发送：复用现有提交链路（校验/图片/风控与手动发送完全一致）。
+    if (preview && typeof submitPreviewReplyForm === "function") {
+      submitPreviewReplyForm(preview, form);
+    }
+  }
+
+  function renderAiSuggestPanel(form, suggestions, errorMessage) {
+    closeAiSuggestPanel(form);
+    const state = getAiSuggestFormState(form);
+    const panel = document.createElement("div");
+    panel.className = AI_SUGGEST_PANEL_CLASS;
+
+    const header = document.createElement("div");
+    header.className = "better-comment-preview__ai-suggest-panel-header";
+    const title = document.createElement("span");
+    title.className = "better-comment-preview__ai-suggest-panel-title";
+    title.textContent = "AI 回复建议";
+    const closeButton = document.createElement("button");
+    closeButton.className = "better-comment-preview__ai-suggest-panel-close";
+    closeButton.type = "button";
+    closeButton.setAttribute("aria-label", "关闭");
+    closeButton.textContent = "×";
+    header.append(title, closeButton);
+    panel.appendChild(header);
+
+    const errorEl = document.createElement("div");
+    errorEl.className = "better-comment-preview__ai-suggest-panel-error";
+    errorEl.hidden = !errorMessage;
+    errorEl.textContent = errorMessage || "";
+    panel.appendChild(errorEl);
+
+    const list = document.createElement("div");
+    list.className = "better-comment-preview__ai-suggest-list";
+    (suggestions || []).forEach((suggestion, index) => {
+      const item = document.createElement("div");
+      item.className = "better-comment-preview__ai-suggest-item";
+      const styleLabel = document.createElement("span");
+      styleLabel.className = "better-comment-preview__ai-suggest-item-style";
+      styleLabel.textContent = AI_SUGGEST_STYLE_LABELS[index] || `建议 ${index + 1}`;
+      const text = document.createElement("div");
+      text.className = "better-comment-preview__ai-suggest-item-text";
+      text.textContent = suggestion;
+      const useButton = document.createElement("button");
+      useButton.className = "better-comment-preview__ai-suggest-item-use";
+      useButton.type = "button";
+      useButton.textContent = "发送";
+      useButton.title = "发送这条回复";
+      useButton.addEventListener("click", () => applyAiSuggestion(form, suggestion));
+      item.append(styleLabel, text, useButton);
+      list.appendChild(item);
+    });
+    panel.appendChild(list);
+
+    const footer = document.createElement("div");
+    footer.className = "better-comment-preview__ai-suggest-panel-footer";
+    const regenerateButton = document.createElement("button");
+    regenerateButton.className = "better-comment-preview__ai-suggest-regenerate";
+    regenerateButton.type = "button";
+    regenerateButton.textContent = "🔄 重新生成";
+    regenerateButton.addEventListener("click", () => {
+      const context = locateAiSuggestContext(regenerateButton);
+      if (context) {
+        requestAiCommentSuggestions(context.form, context.linkId, context.commentId, true);
+      }
+    });
+    footer.appendChild(regenerateButton);
+    panel.appendChild(footer);
+
+    closeButton.addEventListener("click", () => closeAiSuggestPanel(form));
+    panel.addEventListener("click", (event) => event.stopPropagation());
+
+    if (form.parentElement === document.body || !form.isConnected) {
+      form.appendChild(panel);
+    } else {
+      document.body.appendChild(panel);
+    }
+    state.panel = panel;
+    requestAnimationFrame(() => positionAiSuggestPanel(form, panel));
+  }
+
+  async function requestAiCommentSuggestions(form, linkId, commentId, regenerate = false) {
+    const state = getAiSuggestFormState(form);
+    if (state.loading) {
+      return;
+    }
+    state.loading = true;
+    setAiSuggestButtonLoading(form, true);
+    try {
+      const messages = await collectAiSuggestContext({ linkId, commentId });
+      const content = await requestAiChat(messages, 0.7);
+      const suggestions = splitAiSuggestions(content);
+      if (!suggestions.length) {
+        throw new Error("AI 未生成有效的回复建议");
+      }
+      renderAiSuggestPanel(form, suggestions, "");
+    } catch (error) {
+      renderAiSuggestPanel(form, [], error?.message || "AI 建议生成失败");
+      if (!regenerate) {
+        setAiConnectionStatus("ai", "error");
+      }
+    } finally {
+      state.loading = false;
+      setAiSuggestButtonLoading(form, false);
+    }
+  }
+
+  function handleAiSuggestClick(event) {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    const button = event.target.closest(`.${AI_SUGGEST_BUTTON_CLASS}`);
+    if (button) {
+      event.preventDefault();
+      event.stopPropagation();
+      const context = locateAiSuggestContext(button);
+      if (!context) {
+        return;
+      }
+      if (!isAiConfigured()) {
+        openSettingsPanelTab(SETTINGS_TABS.AI);
+        return;
+      }
+      requestAiCommentSuggestions(context.form, context.linkId, context.commentId);
+      return;
+    }
+
+    // 点击浮层外部区域时关闭所有已打开的建议浮层（表单内点击除外）。
+    if (event.target.closest(`.${AI_SUGGEST_PANEL_CLASS}`) || event.target.closest(".better-comment-preview__reply-form")) {
+      return;
+    }
+    document.querySelectorAll(`.${AI_SUGGEST_PANEL_CLASS}`).forEach((panel) => {
+      const form = panel.closest(".better-comment-preview__reply-form");
+      if (form) {
+        closeAiSuggestPanel(form);
+      }
+    });
+  }
+
+  document.addEventListener("click", handleAiSuggestClick, true);
+  // END src\content\ai-comment-suggest.js
+  // BEGIN src\content\ai-comment-opinions.js
+// 评论区观点总结：AI 读取帖子与评论区，总结主要观点/争议点/高赞评论/整体风向。
+// 复用同 IIFE 作用域内的 AI 请求链路与帖子上下文构造（ai-summary.js / feed.js）。
+// 本文件由 scripts/build-source-bundles.ps1 合并进 src/content.js。
+
+  // 每个 linkId 的进行中标记与结果缓存（仅内存，不落盘）。
+  const aiOpinionsSending = new Set();
+  const aiOpinionsCache = new Map();
+
+  const AI_OPINIONS_BUTTON_CLASS = "better-comment-preview__opinions";
+  const AI_OPINIONS_PANEL_CLASS = "better-comment-preview__opinions-panel";
+  const AI_OPINIONS_MAX_CACHE = 50;
+
+  function getAiOpinionsCached(linkId) {
+    return aiOpinionsCache.get(linkId) || null;
+  }
+
+  function setAiOpinionsCached(linkId, entry) {
+    aiOpinionsCache.set(linkId, entry);
+    if (aiOpinionsCache.size > AI_OPINIONS_MAX_CACHE) {
+      const oldestKey = aiOpinionsCache.keys().next().value;
+      if (oldestKey !== undefined) {
+        aiOpinionsCache.delete(oldestKey);
+      }
+    }
+  }
+
+  function locateAiOpinionsContext(button) {
+    const preview = button instanceof Element ? button.closest("[data-link-id]") : null;
+    const linkId = preview?.dataset?.linkId || "";
+    if (!linkId) {
+      return null;
+    }
+    return { preview, linkId };
+  }
+
+  function buildAiOpinionsSystemPrompt() {
+    return [
+      "你是小黑盒社区的资深读者，擅长快速梳理论坛评论区的观点。",
+      "请根据提供的帖子内容与评论区，输出以下内容：",
+      "- 主要观点：3-5 条，按支持人数从多到少排列，每条一句话，并标注倾向（支持 / 反对 / 中立）；",
+      "- 争议点：1-3 个评论区存在分歧的话题；",
+      "- 高赞评论：1-2 条高赞评论所代表的观点；",
+      "- 整体风向：用一句话总结评论区的主流情绪。",
+      "要求：只基于提供的评论内容，不要编造评论、不要逐条复述、不要输出 Markdown 标题符号，用简洁分段文字回答。"
+    ].join("\n");
+  }
+
+  async function collectAiOpinionsPayload(linkId) {
+    const { commentLines, linkDetail } = await ensureSummaryContext(linkId);
+    const title = linkDetail?.title || "";
+    const author = linkDetail?.author || "";
+    const content = linkDetail?.content || "";
+    const topic = linkDetail?.topic || "";
+    return [
+      title ? `帖子标题：${title}` : "",
+      author ? `帖子作者：${author}` : "",
+      content ? `帖子正文：${content}` : "",
+      topic ? `话题：${topic}` : "",
+      commentLines.length ? `评论区：\n${commentLines.join("\n")}` : "评论区：暂无已加载评论"
+    ].filter(Boolean).join("\n\n");
+  }
+
+  function setAiOpinionsButtonLoading(button, loading) {
+    if (button) {
+      button.disabled = loading;
+      button.classList.toggle("is-loading", loading);
+      button.setAttribute("aria-busy", loading ? "true" : "false");
+    }
+  }
+
+  function closeAiOpinionsPanel() {
+    document.querySelectorAll(`.${AI_OPINIONS_PANEL_CLASS}`).forEach((panel) => panel.remove());
+  }
+
+  function positionAiOpinionsPanel(button, panel) {
+    if (!(button instanceof Element)) {
+      return;
+    }
+    const anchorRect = button.getBoundingClientRect();
+    const panelWidth = Math.min(360, Math.max(260, window.innerWidth - 48));
+    const left = Math.min(
+      Math.max(12, anchorRect.left),
+      Math.max(12, window.innerWidth - panelWidth - 12)
+    );
+    const top = Math.max(12, anchorRect.top - panel.offsetHeight - 8);
+    const maxHeight = Math.max(160, Math.min(380, window.innerHeight - 24));
+    panel.style.setProperty("--better-ai-opinions-left", `${left}px`);
+    panel.style.setProperty("--better-ai-opinions-top", `${top}px`);
+    panel.style.setProperty("--better-ai-opinions-max-height", `${maxHeight}px`);
+  }
+
+  function renderAiOpinionsPanel(button, content, errorMessage, linkId = "") {
+    closeAiOpinionsPanel();
+    const panel = document.createElement("div");
+    panel.className = AI_OPINIONS_PANEL_CLASS;
+    if (linkId) {
+      panel.dataset.linkId = linkId;
+    }
+
+    const header = document.createElement("div");
+    header.className = "better-comment-preview__ai-suggest-panel-header";
+    const title = document.createElement("span");
+    title.className = "better-comment-preview__ai-suggest-panel-title";
+    title.textContent = "📊 评论区观点总结";
+    const closeButton = document.createElement("button");
+    closeButton.className = "better-comment-preview__ai-suggest-panel-close";
+    closeButton.type = "button";
+    closeButton.setAttribute("aria-label", "关闭");
+    closeButton.textContent = "×";
+    header.append(title, closeButton);
+    panel.appendChild(header);
+
+    const errorEl = document.createElement("div");
+    errorEl.className = "better-comment-preview__ai-suggest-panel-error";
+    errorEl.hidden = !errorMessage;
+    errorEl.textContent = errorMessage || "";
+    panel.appendChild(errorEl);
+
+    const contentEl = document.createElement("div");
+    contentEl.className = "better-comment-preview__opinions-content";
+    if (content) {
+      const lines = String(content).split("\n");
+      contentEl.appendChild(renderMarkdownBlock(lines));
+    } else {
+      contentEl.textContent = "准备中...";
+    }
+    panel.appendChild(contentEl);
+
+    const footer = document.createElement("div");
+    footer.className = "better-comment-preview__ai-suggest-panel-footer";
+    const regenerateButton = document.createElement("button");
+    regenerateButton.className = "better-comment-preview__ai-suggest-regenerate";
+    regenerateButton.type = "button";
+    regenerateButton.textContent = "🔄 重新生成";
+    regenerateButton.addEventListener("click", () => {
+      const context = locateAiOpinionsContext(regenerateButton) || locateAiOpinionsContext(panel);
+      if (context) {
+        requestAiOpinions(context.preview, context.linkId, true);
+      }
+    });
+    footer.appendChild(regenerateButton);
+    panel.appendChild(footer);
+
+    closeButton.addEventListener("click", () => panel.remove());
+    panel.addEventListener("click", (event) => event.stopPropagation());
+
+    document.body.appendChild(panel);
+    requestAnimationFrame(() => positionAiOpinionsPanel(button, panel));
+  }
+
+  async function requestAiOpinions(preview, linkId, regenerate = false) {
+    if (!linkId || aiOpinionsSending.has(linkId)) {
+      return;
+    }
+    const cached = getAiOpinionsCached(linkId);
+    if (!regenerate && cached?.content) {
+      const button = preview?.querySelector(`.${AI_OPINIONS_BUTTON_CLASS}`);
+      renderAiOpinionsPanel(button, cached.content, "", linkId);
+      return;
+    }
+
+    const button = preview?.querySelector(`.${AI_OPINIONS_BUTTON_CLASS}`);
+    aiOpinionsSending.add(linkId);
+    setAiOpinionsButtonLoading(button, true);
+    try {
+      const payload = await collectAiOpinionsPayload(linkId);
+      const content = await requestAiChat([
+        { role: "system", content: buildAiOpinionsSystemPrompt() },
+        { role: "user", content: payload }
+      ], 0.3);
+      const cleaned = cleanAiSummaryContent(content, false) || "没有生成观点总结。";
+      setAiOpinionsCached(linkId, { content: cleaned, elapsedMs: 0 });
+      renderAiOpinionsPanel(button, cleaned, "", linkId);
+    } catch (error) {
+      renderAiOpinionsPanel(button, "", error?.message || "观点总结生成失败", linkId);
+      if (!regenerate) {
+        setAiConnectionStatus("ai", "error");
+      }
+    } finally {
+      aiOpinionsSending.delete(linkId);
+      setAiOpinionsButtonLoading(button, false);
+    }
+  }
+
+  function handleAiOpinionsClick(event) {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    const button = event.target.closest(`.${AI_OPINIONS_BUTTON_CLASS}`);
+    if (button) {
+      event.preventDefault();
+      event.stopPropagation();
+      const context = locateAiOpinionsContext(button);
+      if (!context) {
+        return;
+      }
+      if (!isAiConfigured()) {
+        openSettingsPanelTab(SETTINGS_TABS.AI);
+        return;
+      }
+      requestAiOpinions(context.preview, context.linkId);
+      return;
+    }
+
+    // 点击面板外部时关闭（面板内点击除外）。
+    if (event.target.closest(`.${AI_OPINIONS_PANEL_CLASS}`)) {
+      return;
+    }
+    closeAiOpinionsPanel();
+  }
+
+  document.addEventListener("click", handleAiOpinionsClick, true);
+  // END src\content\ai-comment-opinions.js
   // BEGIN src\content\ai-summary-history.js
 // AI 总结历史：持久化总结记录，支持从统计页继续提问（弹窗提问 / 打开帖子提问）。
-  const AI_SUMMARY_HISTORY_MAX = 100;
+  const AI_SUMMARY_HISTORY_MAX = 50;
+  // payload 是帖子上下文（追问时重发给 AI），截断到 8KB 足够保留关键信息；
+  // chatMessages 只保留最近 6 轮（12 条），每条 2KB，避免长对话导致 storage 配额超限。
+  const AI_SUMMARY_PAYLOAD_MAX_CHARS = 8000;
+  const AI_SUMMARY_CHAT_MESSAGES_MAX = 12;
+  const AI_SUMMARY_CHAT_MESSAGE_MAX_CHARS = 2000;
 
   function normalizeAiSummaryHistoryRecord(record = {}) {
     return {
@@ -13407,8 +14990,14 @@
       title: String(record?.title || "").slice(0, 200),
       url: String(record?.url || ""),
       content: String(record?.content || "").slice(0, 20000),
-      payload: String(record?.payload || "").slice(0, 60000),
-      chatMessages: Array.isArray(record?.chatMessages) ? record.chatMessages : [],
+      payload: String(record?.payload || "").slice(0, AI_SUMMARY_PAYLOAD_MAX_CHARS),
+      chatMessages: Array.isArray(record?.chatMessages)
+        ? record.chatMessages.slice(-AI_SUMMARY_CHAT_MESSAGES_MAX)
+          .map((message) => ({
+            ...message,
+            content: String(message?.content || "").slice(0, AI_SUMMARY_CHAT_MESSAGE_MAX_CHARS)
+          }))
+        : [],
       summaryAt: Number(record?.summaryAt || record?.updatedAt || 0),
       updatedAt: Number(record?.updatedAt || record?.summaryAt || 0)
     };
@@ -13416,10 +15005,20 @@
 
   function readAiSummaryHistory() {
     return requestLocalSettingsState().then((response) => {
-      const records = response?.ok ? response.values?.[AI_SUMMARY_HISTORY_STORAGE_KEY] : null;
-      return Array.isArray(records)
-        ? records.map(normalizeAiSummaryHistoryRecord).filter((record) => record.linkId)
-        : [];
+      const rawRecords = response?.ok ? response.values?.[AI_SUMMARY_HISTORY_STORAGE_KEY] : null;
+      if (!Array.isArray(rawRecords)) {
+        return [];
+      }
+      const records = rawRecords
+        .map(normalizeAiSummaryHistoryRecord)
+        .filter((record) => record.linkId)
+        .slice(0, AI_SUMMARY_HISTORY_MAX);
+      // 存量历史超过上限或字段被截断时，回写裁剪版释放 storage 空间。
+      if (rawRecords.length > records.length
+        || JSON.stringify(rawRecords.slice(0, records.length)) !== JSON.stringify(records)) {
+        writeAiSummaryHistory(records);
+      }
+      return records;
     });
   }
 
@@ -13445,7 +15044,7 @@
         url,
         content: entry.content,
         payload: entry.payload || "",
-        chatMessages: entry.chatMessages || [],
+        chatMessages: Array.isArray(entry.chatMessages) ? entry.chatMessages.slice(-AI_SUMMARY_CHAT_MESSAGES_MAX) : [],
         summaryAt: now,
         updatedAt: now
       }),
@@ -16510,7 +18109,168 @@
       updateAiBotLogFilterCount();
     }
     checkAiBotExtensionUpdate();
+    bindVersionBadgeClick(panel);
     repositionSettingsPanelIfOpen();
+  }
+
+  // ==================== 版本更新内容弹窗 ====================
+
+  let versionChangelogDialog = null;
+
+  function escapeRegExpChars(value) {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function extractCurrentVersionChangelog(markdown) {
+    const version = String(EXTENSION_VERSION || "").trim();
+    const text = String(markdown || "");
+    if (!version || !text.trim()) {
+      return "";
+    }
+    // 匹配 "## v1.7" / "## 1.7" / "## [v1.7]" 标题行，取其到下一个 ## 标题前的全部内容。
+    const headerRe = new RegExp(`^##\\s*\\[?v?${escapeRegExpChars(version)}\\]?\\b`);
+    const lines = text.split("\n");
+    let start = -1;
+    for (let i = 0; i < lines.length; i += 1) {
+      if (headerRe.test(lines[i])) {
+        start = i;
+        break;
+      }
+    }
+    if (start === -1) {
+      return "";
+    }
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i += 1) {
+      if (/^##\s/.test(lines[i])) {
+        end = i;
+        break;
+      }
+    }
+    return lines.slice(start, end).join("\n").trim();
+  }
+
+  function renderVersionChangelogDialog(title, content) {
+    closeVersionChangelogDialog();
+    const overlay = document.createElement("div");
+    overlay.className = "better-settings__changelog-overlay";
+
+    const dialog = document.createElement("div");
+    dialog.className = "better-settings__changelog-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-label", title);
+
+    const header = document.createElement("div");
+    header.className = "better-settings__changelog-header";
+    const titleEl = document.createElement("span");
+    titleEl.className = "better-settings__changelog-title";
+    titleEl.textContent = title;
+    const closeButton = document.createElement("button");
+    closeButton.className = "better-settings__changelog-close";
+    closeButton.type = "button";
+    closeButton.setAttribute("aria-label", "关闭");
+    closeButton.textContent = "×";
+    closeButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeVersionChangelogDialog();
+    });
+    header.append(titleEl, closeButton);
+
+    const body = document.createElement("div");
+    body.className = "better-settings__changelog-body";
+    if (content) {
+      body.appendChild(renderMarkdownBlock(String(content).split("\n")));
+    } else {
+      body.textContent = "暂无更新内容说明";
+    }
+
+    dialog.append(header, body);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    versionChangelogDialog = overlay;
+
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) {
+        closeVersionChangelogDialog();
+      }
+    });
+    document.addEventListener("keydown", handleVersionChangelogEscape);
+  }
+
+  function handleVersionChangelogEscape(event) {
+    if (event.key === "Escape" && versionChangelogDialog) {
+      closeVersionChangelogDialog();
+    }
+  }
+
+  function closeVersionChangelogDialog() {
+    if (versionChangelogDialog) {
+      versionChangelogDialog.remove();
+      versionChangelogDialog = null;
+    }
+    document.removeEventListener("keydown", handleVersionChangelogEscape);
+  }
+
+  async function fetchCurrentVersionChangelog() {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(`https://raw.githubusercontent.com/${GITHUB_REPO}/main/CHANGELOG.md`, {
+        signal: controller.signal
+      });
+      if (!response.ok) {
+        return "";
+      }
+      const text = await response.text();
+      return extractCurrentVersionChangelog(text);
+    } catch {
+      return "";
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
+  function openVersionChangelogPopup() {
+    const version = String(EXTENSION_VERSION || "");
+    const title = `v${escapeHtml(version)} 更新内容`;
+    renderVersionChangelogDialog(title, String(CURRENT_VERSION_CHANGELOG || ""));
+    const body = document.querySelector(".better-settings__changelog-body");
+    if (body) {
+      body.textContent = "加载更新内容...";
+    }
+    fetchCurrentVersionChangelog().then((content) => {
+      if (!versionChangelogDialog) {
+        return;
+      }
+      const currentBody = document.querySelector(".better-settings__changelog-body");
+      if (!currentBody) {
+        return;
+      }
+      const finalContent = content || String(CURRENT_VERSION_CHANGELOG || "");
+      currentBody.replaceChildren(finalContent
+        ? renderMarkdownBlock(finalContent.split("\n"))
+        : document.createTextNode("暂无更新内容说明"));
+    });
+  }
+
+  function bindVersionBadgeClick(panel) {
+    const badge = panel?.querySelector(".better-settings__version-badge");
+    if (!badge || badge.dataset.betterChangelogBound === "1") {
+      return;
+    }
+    badge.dataset.betterChangelogBound = "1";
+    badge.classList.add("better-settings__version-badge--clickable");
+    badge.setAttribute("role", "button");
+    badge.tabIndex = 0;
+    badge.title = "查看更新内容";
+    badge.addEventListener("click", openVersionChangelogPopup);
+    badge.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openVersionChangelogPopup();
+      }
+    });
   }
 
   // END src\content\settings-shell.js

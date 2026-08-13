@@ -363,6 +363,167 @@
       updateAiBotLogFilterCount();
     }
     checkAiBotExtensionUpdate();
+    bindVersionBadgeClick(panel);
     repositionSettingsPanelIfOpen();
+  }
+
+  // ==================== 版本更新内容弹窗 ====================
+
+  let versionChangelogDialog = null;
+
+  function escapeRegExpChars(value) {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function extractCurrentVersionChangelog(markdown) {
+    const version = String(EXTENSION_VERSION || "").trim();
+    const text = String(markdown || "");
+    if (!version || !text.trim()) {
+      return "";
+    }
+    // 匹配 "## v1.7" / "## 1.7" / "## [v1.7]" 标题行，取其到下一个 ## 标题前的全部内容。
+    const headerRe = new RegExp(`^##\\s*\\[?v?${escapeRegExpChars(version)}\\]?\\b`);
+    const lines = text.split("\n");
+    let start = -1;
+    for (let i = 0; i < lines.length; i += 1) {
+      if (headerRe.test(lines[i])) {
+        start = i;
+        break;
+      }
+    }
+    if (start === -1) {
+      return "";
+    }
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i += 1) {
+      if (/^##\s/.test(lines[i])) {
+        end = i;
+        break;
+      }
+    }
+    return lines.slice(start, end).join("\n").trim();
+  }
+
+  function renderVersionChangelogDialog(title, content) {
+    closeVersionChangelogDialog();
+    const overlay = document.createElement("div");
+    overlay.className = "better-settings__changelog-overlay";
+
+    const dialog = document.createElement("div");
+    dialog.className = "better-settings__changelog-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-label", title);
+
+    const header = document.createElement("div");
+    header.className = "better-settings__changelog-header";
+    const titleEl = document.createElement("span");
+    titleEl.className = "better-settings__changelog-title";
+    titleEl.textContent = title;
+    const closeButton = document.createElement("button");
+    closeButton.className = "better-settings__changelog-close";
+    closeButton.type = "button";
+    closeButton.setAttribute("aria-label", "关闭");
+    closeButton.textContent = "×";
+    closeButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeVersionChangelogDialog();
+    });
+    header.append(titleEl, closeButton);
+
+    const body = document.createElement("div");
+    body.className = "better-settings__changelog-body";
+    if (content) {
+      body.appendChild(renderMarkdownBlock(String(content).split("\n")));
+    } else {
+      body.textContent = "暂无更新内容说明";
+    }
+
+    dialog.append(header, body);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    versionChangelogDialog = overlay;
+
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) {
+        closeVersionChangelogDialog();
+      }
+    });
+    document.addEventListener("keydown", handleVersionChangelogEscape);
+  }
+
+  function handleVersionChangelogEscape(event) {
+    if (event.key === "Escape" && versionChangelogDialog) {
+      closeVersionChangelogDialog();
+    }
+  }
+
+  function closeVersionChangelogDialog() {
+    if (versionChangelogDialog) {
+      versionChangelogDialog.remove();
+      versionChangelogDialog = null;
+    }
+    document.removeEventListener("keydown", handleVersionChangelogEscape);
+  }
+
+  async function fetchCurrentVersionChangelog() {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(`https://raw.githubusercontent.com/${GITHUB_REPO}/main/CHANGELOG.md`, {
+        signal: controller.signal
+      });
+      if (!response.ok) {
+        return "";
+      }
+      const text = await response.text();
+      return extractCurrentVersionChangelog(text);
+    } catch {
+      return "";
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
+  function openVersionChangelogPopup() {
+    const version = String(EXTENSION_VERSION || "");
+    const title = `v${escapeHtml(version)} 更新内容`;
+    renderVersionChangelogDialog(title, String(CURRENT_VERSION_CHANGELOG || ""));
+    const body = document.querySelector(".better-settings__changelog-body");
+    if (body) {
+      body.textContent = "加载更新内容...";
+    }
+    fetchCurrentVersionChangelog().then((content) => {
+      if (!versionChangelogDialog) {
+        return;
+      }
+      const currentBody = document.querySelector(".better-settings__changelog-body");
+      if (!currentBody) {
+        return;
+      }
+      const finalContent = content || String(CURRENT_VERSION_CHANGELOG || "");
+      currentBody.replaceChildren(finalContent
+        ? renderMarkdownBlock(finalContent.split("\n"))
+        : document.createTextNode("暂无更新内容说明"));
+    });
+  }
+
+  function bindVersionBadgeClick(panel) {
+    const badge = panel?.querySelector(".better-settings__version-badge");
+    if (!badge || badge.dataset.betterChangelogBound === "1") {
+      return;
+    }
+    badge.dataset.betterChangelogBound = "1";
+    badge.classList.add("better-settings__version-badge--clickable");
+    badge.setAttribute("role", "button");
+    badge.tabIndex = 0;
+    badge.title = "查看更新内容";
+    badge.addEventListener("click", openVersionChangelogPopup);
+    badge.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openVersionChangelogPopup();
+      }
+    });
   }
 

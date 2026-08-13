@@ -55,7 +55,12 @@
   }
 
   async function fetchJson(url, options) {
-    const response = await fetch(url, options);
+    const response = await fetch(url, {
+      ...options,
+      // 请求超时控制：AI 提供方长时间无响应时及时失败，
+      // 返回明确错误而非挂起直到 content 侧 60s 泛化超时。
+      signal: AbortSignal.timeout(55000)
+    });
     const data = await readJsonResponse(response);
     if (!response.ok) {
       throw new Error(String(getProviderError(data, response)));
@@ -240,9 +245,11 @@
         content: String(content || "").trim() || "模型没有返回内容"
       };
     } catch (error) {
+      const message = String(error?.message || error || "AI 请求失败");
+      const isTimeout = error?.name === "TimeoutError" || /timeout|aborted/i.test(message);
       return {
         ok: false,
-        error: error?.message || "AI 请求失败"
+        error: isTimeout ? "AI 请求超时，请检查网络或 AI 服务地址" : message
       };
     }
   }

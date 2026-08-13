@@ -72,7 +72,12 @@ let currentSettings = normalizeAiSettings();
     }
 
     try {
-      chrome.storage.local.set(values);
+      chrome.storage.local.set(values, () => {
+        // 写入失败（如配额超限）静默降级，避免 Unchecked runtime.lastError 刷屏。
+        if (chrome.runtime?.lastError) {
+          console.warn("[better-xiaoheihe] storage 写入失败", chrome.runtime.lastError.message || "");
+        }
+      });
     } catch (error) {
       getExtensionUnavailableError(error);
     }

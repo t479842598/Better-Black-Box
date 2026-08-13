@@ -43,7 +43,13 @@
 
   function storageSet(values) {
     return new Promise((resolve) => {
-      chrome.storage.local.set(values, resolve);
+      chrome.storage.local.set(values, () => {
+        if (chrome.runtime?.lastError) {
+          // 写入失败（如配额超限）时静默降级，避免 Unchecked runtime.lastError 刷屏。
+          console.warn("[better-xiaoheihe] storage 写入失败", chrome.runtime.lastError?.message || "");
+        }
+        resolve();
+      });
     });
   }
 
@@ -72,6 +78,28 @@
     }
   }
 
+  // 深度截断日志 detail/entry 的字符串字段，防止单条日志过大撑爆 storage。
+  function truncateLogStrings(value, maxLength = 2000) {
+    if (typeof value === "string") {
+      return value.slice(0, maxLength);
+    }
+    if (Array.isArray(value)) {
+      return value.slice(0, 20).map((item) => truncateLogStrings(item, maxLength));
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, truncateLogStrings(item, maxLength)]));
+    }
+    return value;
+  }
+
+  function compactAiBotLogDetail(detail) {
+    return truncateLogStrings(detail, 2000);
+  }
+
+  function compactAiBotLogEntry(entry) {
+    return truncateLogStrings(entry || {}, 4000);
+  }
+
   async function appendAiBotLog(level, message, detail = {}) {
     const now = Date.now();
     const result = await storageGet(AI_BOT_LOGS_STORAGE_KEY);
@@ -83,10 +111,10 @@
         timeText: formatLogTime(now),
         level: ["error", "warn", "success"].includes(level) ? level : "info",
         message: String(message || ""),
-        detail: detail && typeof detail === "object" ? detail : {}
+        detail: detail && typeof detail === "object" ? compactAiBotLogDetail(detail) : {}
       },
       ...currentLogs.filter((item) => !item?.skipped && Number(item?.timestamp || 0) >= now - AI_BOT_LOG_RETENTION_MS)
-    ].slice(0, 5000);
+    ].slice(0, AI_BOT_LOG_MAX_ITEMS);
     await storageSet({ [AI_BOT_LOGS_STORAGE_KEY]: logs });
   }
 
@@ -101,10 +129,10 @@
         id: `${now}-${Math.random().toString(16).slice(2)}`,
         timestamp: now,
         timeText: formatLogTime(now),
-        ...entry
+        ...compactAiBotLogEntry(entry)
       },
       ...currentLogs.filter((item) => Number(item?.timestamp || 0) >= now - AI_BOT_LOG_RETENTION_MS)
-    ].slice(0, 5000);
+    ].slice(0, AI_BOT_LOG_MAX_ITEMS);
     await storageSet({ [AI_BOT_MESSAGE_LOGS_STORAGE_KEY]: logs });
   }
 

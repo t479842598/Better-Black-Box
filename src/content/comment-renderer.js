@@ -591,6 +591,9 @@
         <input class="better-comment-preview__reply-file-input" type="file" accept="image/*" multiple>
         <div class="better-comment-preview__reply-form-footer">
           <div class="better-comment-preview__reply-tools">
+            <button class="better-comment-preview__ai-suggest" type="button" aria-label="AI 建议回复" title="AI 建议回复">
+              <span aria-hidden="true">✨ AI</span>
+            </button>
             <button class="better-comment-preview__emoji-toggle" type="button" aria-expanded="false" aria-label="表情" title="表情">
               <i class="hb-icon heybox-bbs_emoji_filled_24x24 better-comment-preview__emoji-toggle-icon" aria-hidden="true"></i>
             </button>
@@ -663,13 +666,13 @@
     return `${previewClass} comment-item__content${isCyComment(comment) ? " cy" : ""}`;
   }
 
-  function renderRootComment(comment, activeReplyTarget) {
+  function renderRootComment(comment, activeReplyTarget, floorNumber) {
     const user = comment.user || {};
     const commentId = getCommentId(comment);
     return `
       <div class="better-comment-preview__item" ${renderCommentReplyDataset(comment, commentId)} title="点击回复">
         <div class="better-comment-preview__body">
-          <div>${renderCommentUser(user, comment.is_link_owner === 1)}</div>
+          <div>${floorNumber ? `<span class="better-comment-preview__floor" title="楼层">#${escapeHtml(floorNumber)}</span>` : ""}${renderCommentUser(user, comment.is_link_owner === 1)}</div>
           <div class="better-comment-preview__text-row">
             <div class="better-comment-preview__text-wrapper">
               <div class="${getCommentContentClass(comment, "better-comment-preview__text")}" data-expanded="false">${renderCommentText(comment.text)}</div>
@@ -740,11 +743,11 @@
     `;
   }
 
-  function renderCommentGroup(group, activeReplyTarget) {
+  function renderCommentGroup(group, activeReplyTarget, floorNumber) {
     const rootCommentId = getCommentId(group.root);
     return `
       <div class="better-comment-preview__group">
-        ${renderRootComment(group.root, activeReplyTarget)}
+        ${renderRootComment(group.root, activeReplyTarget, floorNumber)}
         ${group.replies.map((reply) => renderReplyComment(reply, rootCommentId, activeReplyTarget)).join("")}
         ${renderReplyMoreButton(group)}
       </div>
@@ -880,6 +883,11 @@
     return `
       <div class="better-comment-preview__toolbar">
         ${renderCommentSortControls()}
+        <button class="better-comment-preview__opinions" type="button" title="AI 总结评论区观点">📊 观点总结</button>
+        <button class="better-comment-preview__only-owner-toggle" type="button" aria-pressed="${commentPreviewOnlyOwner ? "true" : "false"}" title="${commentPreviewOnlyOwner ? "显示全部评论" : "只看楼主"}">
+          <span class="better-comment-preview__cy-toggle-switch" aria-hidden="true"></span>
+          <span>只看楼主</span>
+        </button>
         <button class="better-comment-preview__cy-toggle" type="button" aria-pressed="${hideCyComments ? "true" : "false"}" title="${hideCyComments ? "显示插眼评论" : "屏蔽插眼评论"}">
           <span class="better-comment-preview__cy-toggle-switch" aria-hidden="true"></span>
           <span>屏蔽CY</span>
@@ -887,6 +895,13 @@
         ${hiddenCount ? `<span class="better-comment-preview__filtered-count" title="屏蔽CY的数量">${escapeHtml(hiddenCount)}</span>` : ""}
       </div>
     `;
+  }
+
+  function syncCommentOnlyOwnerControls() {
+    document.querySelectorAll(".better-comment-preview__only-owner-toggle").forEach((toggle) => {
+      toggle.setAttribute("aria-pressed", commentPreviewOnlyOwner ? "true" : "false");
+      toggle.setAttribute("title", commentPreviewOnlyOwner ? "显示全部评论" : "只看楼主");
+    });
   }
 
   function syncCyToggleControls() {
@@ -930,6 +945,13 @@
     return "";
   }
 
+  function applyCommentOnlyOwnerFilter(commentGroups) {
+    if (!commentPreviewOnlyOwner) {
+      return commentGroups;
+    }
+    return (commentGroups || []).filter((group) => isOwnerComment(group?.root));
+  }
+
   function renderCommentListContent(state, commentGroups, hiddenCount) {
     if (!commentGroups.length && state.loadingMore) {
       return '<div class="better-comment-preview__loading-more">评论加载中</div>';
@@ -940,7 +962,11 @@
     if (!commentGroups.length) {
       return '<div class="better-comment-preview__empty">暂无评论</div>';
     }
-    return `${commentGroups.map((group) => renderCommentGroup(group, state?.activeReplyTarget)).join("")}${renderCommentListFooter(state)}`;
+    const visibleGroups = applyCommentOnlyOwnerFilter(commentGroups);
+    if (commentPreviewOnlyOwner && !visibleGroups.length) {
+      return '<div class="better-comment-preview__empty">暂无评论（只看楼主）</div>';
+    }
+    return `${visibleGroups.map((group) => renderCommentGroup(group, state?.activeReplyTarget, getCommentGroupOriginalIndex(group) + 1)).join("")}${renderCommentListFooter(state)}`;
   }
 
   function isActivePostCommentTarget(state) {

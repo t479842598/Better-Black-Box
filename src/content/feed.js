@@ -209,6 +209,15 @@
     refreshAllCommentFilters();
   }
 
+  function setCommentPreviewOnlyOwner(enabled) {
+    commentPreviewOnlyOwner = enabled;
+    saveLocalSettings({
+      [COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY]: enabled
+    });
+    syncCommentOnlyOwnerControls();
+    refreshAllCommentFilters();
+  }
+
   function setCommentPreviewSort(sort) {
     commentPreviewSort = normalizeCommentPreviewSort(sort);
     writeCommentPreviewSortState(commentPreviewSort);
@@ -1677,6 +1686,14 @@
         return;
       }
 
+      const onlyOwnerToggle = event.target.closest(".better-comment-preview__only-owner-toggle");
+      if (onlyOwnerToggle && preview.contains(onlyOwnerToggle)) {
+        event.preventDefault();
+        event.stopPropagation();
+        setCommentPreviewOnlyOwner(!commentPreviewOnlyOwner);
+        return;
+      }
+
       const sortButton = event.target.closest(".better-comment-preview__sort-option");
       if (sortButton && preview.contains(sortButton)) {
         event.preventDefault();
@@ -1793,6 +1810,14 @@
   function bindPreviewListScroll(preview) {
     const list = preview.querySelector(".better-comment-preview__list");
     if (!list) {
+      return;
+    }
+
+    // 弹窗预览场景（列表在自适应高度容器内，scrollHeight 恒等于 clientHeight）：
+    // 不在此绑定滚动加载，否则 rAF 首检会立即触发 loadMore 并级联拉取全部评论页；
+    // 弹窗场景由 topic-preview.js 自行监听外层滚动容器加载。
+    const inTopicPreview = Boolean(preview.closest(`.${TOPIC_PREVIEW_CLASS}`));
+    if (inTopicPreview) {
       return;
     }
 

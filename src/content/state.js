@@ -135,6 +135,7 @@
   const capturedApiParams = {};
   let lastSavedApiParamsText = "";
   let hideCyComments = false;
+  let commentPreviewOnlyOwner = false;
   let commentPreviewSort = COMMENT_PREVIEW_SORTS.DEFAULT;
   let blockedKeywords = [];
   let levelFilters = normalizeLevelFilters({});
@@ -652,14 +653,16 @@
     const now = Date.now();
     return (Array.isArray(logs) ? logs : [])
       .filter((log) => Number(log?.timestamp || 0) >= now - AI_BOT_LOG_RETENTION_MS)
-      .sort((left, right) => Number(right?.timestamp || 0) - Number(left?.timestamp || 0));
+      .sort((left, right) => Number(right?.timestamp || 0) - Number(left?.timestamp || 0))
+      .slice(0, AI_BOT_LOG_MAX_ITEMS);
   }
 
   function normalizeAiBotMessageLogs(logs) {
     const now = Date.now();
     return (Array.isArray(logs) ? logs : [])
       .filter((log) => !log?.skipped && Number(log?.timestamp || 0) >= now - AI_BOT_LOG_RETENTION_MS)
-      .sort((left, right) => Number(right?.sentTimestamp || right?.timestamp || 0) - Number(left?.sentTimestamp || left?.timestamp || 0));
+      .sort((left, right) => Number(right?.sentTimestamp || right?.timestamp || 0) - Number(left?.sentTimestamp || left?.timestamp || 0))
+      .slice(0, AI_BOT_LOG_MAX_ITEMS);
   }
 
   function normalizeAiBotReplyQueue(queue) {
@@ -888,6 +891,9 @@
     hideCyComments = values[HIDE_CY_COMMENTS_STORAGE_KEY] === true
       || values[HIDE_CY_COMMENTS_STORAGE_KEY] === "1"
       || values[HIDE_CY_COMMENTS_STORAGE_KEY] === "true";
+    commentPreviewOnlyOwner = values[COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY] === true
+      || values[COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY] === "1"
+      || values[COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY] === "true";
     blockedKeywords = normalizeBlockedKeywords(values[BLOCKED_KEYWORDS_STORAGE_KEY]);
     levelFilters = normalizeLevelFilters(values[LEVEL_FILTERS_STORAGE_KEY]);
     commentPreviewSort = normalizeCommentPreviewSort(values[COMMENT_PREVIEW_SORT_STORAGE_KEY]);
@@ -960,9 +966,20 @@
     nextValues[AI_BOT_LOGS_STORAGE_KEY] = keysPresent[AI_BOT_LOGS_STORAGE_KEY]
       ? normalizeAiBotLogs(values[AI_BOT_LOGS_STORAGE_KEY])
       : [];
+    // 存量日志超过新上限时裁剪并回写，释放 storage 配额空间。
+    if (keysPresent[AI_BOT_LOGS_STORAGE_KEY]
+      && Array.isArray(values[AI_BOT_LOGS_STORAGE_KEY])
+      && values[AI_BOT_LOGS_STORAGE_KEY].length > nextValues[AI_BOT_LOGS_STORAGE_KEY].length) {
+      migrationValues[AI_BOT_LOGS_STORAGE_KEY] = nextValues[AI_BOT_LOGS_STORAGE_KEY];
+    }
     nextValues[AI_BOT_MESSAGE_LOGS_STORAGE_KEY] = keysPresent[AI_BOT_MESSAGE_LOGS_STORAGE_KEY]
       ? normalizeAiBotMessageLogs(values[AI_BOT_MESSAGE_LOGS_STORAGE_KEY])
       : [];
+    if (keysPresent[AI_BOT_MESSAGE_LOGS_STORAGE_KEY]
+      && Array.isArray(values[AI_BOT_MESSAGE_LOGS_STORAGE_KEY])
+      && values[AI_BOT_MESSAGE_LOGS_STORAGE_KEY].length > nextValues[AI_BOT_MESSAGE_LOGS_STORAGE_KEY].length) {
+      migrationValues[AI_BOT_MESSAGE_LOGS_STORAGE_KEY] = nextValues[AI_BOT_MESSAGE_LOGS_STORAGE_KEY];
+    }
     nextValues[AI_BOT_REPLY_QUEUE_STORAGE_KEY] = keysPresent[AI_BOT_REPLY_QUEUE_STORAGE_KEY]
       ? normalizeAiBotReplyQueue(values[AI_BOT_REPLY_QUEUE_STORAGE_KEY])
       : [];

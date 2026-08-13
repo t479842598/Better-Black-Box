@@ -1011,6 +1011,7 @@
 
     aiBotRunning = true;
     try {
+      await markAiBotPollHeartbeat();
       if (!await hasAiBotConsent()) {
         return { ok: false, error: "尚未确认 AI Bot 风险授权" };
       }

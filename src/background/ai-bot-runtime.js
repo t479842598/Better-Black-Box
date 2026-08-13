@@ -45,6 +45,60 @@
     });
   }
 
+  // AI Bot 轮询心跳：每次轮询执行时记录时间，供启动自愈判断“长时间未轮询”。
+  async function markAiBotPollHeartbeat() {
+    const result = await storageGet(AI_BOT_RUNTIME_STORAGE_KEY);
+    await storageSet({
+      [AI_BOT_RUNTIME_STORAGE_KEY]: {
+        ...(result[AI_BOT_RUNTIME_STORAGE_KEY] || {}),
+        lastPollAt: Date.now()
+      }
+    });
+  }
+
+  // 自愈检查：当 Service Worker 被唤醒（启动/消息/页面活动）时，
+  // 若发现 AI Bot alarm 丢失或长时间未轮询，重建 alarm 并立即补跑一次。
+  // 解决 MV3 下 Service Worker 挂起导致 alarm 失效、自动回复/评论停摆的问题。
+  async function ensureAiBotAlarmHealthy() {
+    try {
+      if (!AI_BOT_FEATURE_ENABLED) {
+        return;
+      }
+      const settings = await readAiBotSettings();
+      const consentAccepted = await hasAiBotConsent();
+      if (!consentAccepted || !settings.enabled) {
+        return;
+      }
+      const result = await storageGet(AI_BOT_RUNTIME_STORAGE_KEY);
+      const runtime = result[AI_BOT_RUNTIME_STORAGE_KEY] || {};
+      const lastPollAt = Number(runtime.lastPollAt || 0);
+      const gapMs = Date.now() - lastPollAt;
+      // 轮询间隔拉大（服务不可用）时阈值放宽，避免每次唤醒都重复补跑；
+      // 默认按 pollMinutes 的 10 倍判定，至少 10 分钟。
+      const healthyGapMs = Math.max(10, Number(settings.pollMinutes || 1) * 10) * 60 * 1000;
+      const pollAlarm = await getAiBotAlarm(AI_BOT_ALARM_NAME);
+      const needsHeal = !pollAlarm || (lastPollAt > 0 && gapMs > healthyGapMs);
+      if (!needsHeal) {
+        return;
+      }
+      await appendAiBotLog("warn", "检测到 AI Bot 定时任务中断，正在重建并补跑", {
+        alarmExists: Boolean(pollAlarm),
+        lastPollAt: lastPollAt ? formatLogTime(lastPollAt) : "",
+        gapMinutes: lastPollAt ? Math.floor(gapMs / 60000) : 0,
+        healthyGapMinutes: Math.floor(healthyGapMs / 60000)
+      });
+      await syncAiBotAlarm({ reset: true });
+      await markAiBotPollHeartbeat();
+      runAiBotPoll("self-heal").catch(() => {});
+      if (settings.commentHomeFeed) {
+        runAiBotFeedComment().catch(() => {});
+      }
+      runAiBotQueueConsumer().catch(() => {});
+    } catch (error) {
+      // 自愈失败不影响主流程
+    }
+  }
+
   async function createAiBotAlarm(name, alarmInfo, reset) {
     if (!chrome.alarms?.create) {
       return;

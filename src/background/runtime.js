@@ -4,11 +4,13 @@
     syncAiBotAlarm({ reset: true });
     syncMentionNotifyAlarm({ reset: true });
     bindMentionNotifyNotificationActions();
+    ensureAiBotAlarmHealthy();
   });
 
   chrome.runtime.onStartup?.addListener(() => {
     syncAiBotAlarm();
     syncMentionNotifyAlarm();
+    ensureAiBotAlarmHealthy();
   });
 
   chrome.alarms?.onAlarm?.addListener((alarm) => {
@@ -82,6 +84,7 @@
 
     if (message?.type === "better-xiaoheihe-ai-bot-status") {
       getAiBotStatus().then(sendResponse);
+      ensureAiBotAlarmHealthy();
       return true;
     }
 
@@ -90,6 +93,7 @@
         sendResponse({ ok: false, disabled: true, error: "AI Bot 功能已停用" });
         return false;
       }
+      ensureAiBotAlarmHealthy();
       runAiBotPoll("manual").then(sendResponse);
       return true;
     }
@@ -121,3 +125,4 @@
   });
 
   syncAiBotAlarm();
+  ensureAiBotAlarmHealthy();

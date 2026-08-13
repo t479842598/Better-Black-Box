@@ -1,5 +1,10 @@
 // AI 总结历史：持久化总结记录，支持从统计页继续提问（弹窗提问 / 打开帖子提问）。
-  const AI_SUMMARY_HISTORY_MAX = 100;
+  const AI_SUMMARY_HISTORY_MAX = 50;
+  // payload 是帖子上下文（追问时重发给 AI），截断到 8KB 足够保留关键信息；
+  // chatMessages 只保留最近 6 轮（12 条），每条 2KB，避免长对话导致 storage 配额超限。
+  const AI_SUMMARY_PAYLOAD_MAX_CHARS = 8000;
+  const AI_SUMMARY_CHAT_MESSAGES_MAX = 12;
+  const AI_SUMMARY_CHAT_MESSAGE_MAX_CHARS = 2000;
 
   function normalizeAiSummaryHistoryRecord(record = {}) {
     return {
@@ -7,8 +12,14 @@
       title: String(record?.title || "").slice(0, 200),
       url: String(record?.url || ""),
       content: String(record?.content || "").slice(0, 20000),
-      payload: String(record?.payload || "").slice(0, 60000),
-      chatMessages: Array.isArray(record?.chatMessages) ? record.chatMessages : [],
+      payload: String(record?.payload || "").slice(0, AI_SUMMARY_PAYLOAD_MAX_CHARS),
+      chatMessages: Array.isArray(record?.chatMessages)
+        ? record.chatMessages.slice(-AI_SUMMARY_CHAT_MESSAGES_MAX)
+          .map((message) => ({
+            ...message,
+            content: String(message?.content || "").slice(0, AI_SUMMARY_CHAT_MESSAGE_MAX_CHARS)
+          }))
+        : [],
       summaryAt: Number(record?.summaryAt || record?.updatedAt || 0),
       updatedAt: Number(record?.updatedAt || record?.summaryAt || 0)
     };
@@ -16,10 +27,20 @@
 
   function readAiSummaryHistory() {
     return requestLocalSettingsState().then((response) => {
-      const records = response?.ok ? response.values?.[AI_SUMMARY_HISTORY_STORAGE_KEY] : null;
-      return Array.isArray(records)
-        ? records.map(normalizeAiSummaryHistoryRecord).filter((record) => record.linkId)
-        : [];
+      const rawRecords = response?.ok ? response.values?.[AI_SUMMARY_HISTORY_STORAGE_KEY] : null;
+      if (!Array.isArray(rawRecords)) {
+        return [];
+      }
+      const records = rawRecords
+        .map(normalizeAiSummaryHistoryRecord)
+        .filter((record) => record.linkId)
+        .slice(0, AI_SUMMARY_HISTORY_MAX);
+      // 存量历史超过上限或字段被截断时，回写裁剪版释放 storage 空间。
+      if (rawRecords.length > records.length
+        || JSON.stringify(rawRecords.slice(0, records.length)) !== JSON.stringify(records)) {
+        writeAiSummaryHistory(records);
+      }
+      return records;
     });
   }
 
@@ -45,7 +66,7 @@
         url,
         content: entry.content,
         payload: entry.payload || "",
-        chatMessages: entry.chatMessages || [],
+        chatMessages: Array.isArray(entry.chatMessages) ? entry.chatMessages.slice(-AI_SUMMARY_CHAT_MESSAGES_MAX) : [],
         summaryAt: now,
         updatedAt: now
       }),
