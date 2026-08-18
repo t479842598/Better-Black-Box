@@ -135,7 +135,6 @@
   const capturedApiParams = {};
   let lastSavedApiParamsText = "";
   let hideCyComments = false;
-  let commentPreviewOnlyOwner = false;
   let commentPreviewSort = COMMENT_PREVIEW_SORTS.DEFAULT;
   let blockedKeywords = [];
   let levelFilters = normalizeLevelFilters({});
@@ -891,9 +890,6 @@
     hideCyComments = values[HIDE_CY_COMMENTS_STORAGE_KEY] === true
       || values[HIDE_CY_COMMENTS_STORAGE_KEY] === "1"
       || values[HIDE_CY_COMMENTS_STORAGE_KEY] === "true";
-    commentPreviewOnlyOwner = values[COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY] === true
-      || values[COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY] === "1"
-      || values[COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY] === "true";
     blockedKeywords = normalizeBlockedKeywords(values[BLOCKED_KEYWORDS_STORAGE_KEY]);
     levelFilters = normalizeLevelFilters(values[LEVEL_FILTERS_STORAGE_KEY]);
     commentPreviewSort = normalizeCommentPreviewSort(values[COMMENT_PREVIEW_SORT_STORAGE_KEY]);

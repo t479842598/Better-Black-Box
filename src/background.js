@@ -9,7 +9,6 @@
   const BLOCKED_KEYWORDS_STORAGE_KEY = "better-xiaoheihe-blocked-keywords";
   const LEVEL_FILTERS_STORAGE_KEY = "better-xiaoheihe-level-filters";
   const COMMENT_PREVIEW_SORT_STORAGE_KEY = "better-xiaoheihe-comment-preview-sort";
-  const COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY = "better-xiaoheihe-comment-preview-only-owner";
   const AI_SETTINGS_STORAGE_KEY = "better-xiaoheihe-ai-settings";
   const AI_MODEL_CACHE_STORAGE_KEY = "better-xiaoheihe-ai-model-cache";
   const AI_BOT_SETTINGS_STORAGE_KEY = "better-xiaoheihe-ai-bot-settings";
@@ -28,17 +27,16 @@
   const UI_STATE_STORAGE_KEY = "better-xiaoheihe-ui-state";
   const COMMENT_EMOJI_USAGE_STORAGE_KEY = "better-xiaoheihe-comment-emoji-usage";
   // 版本信息：发布时与 manifest.json 的 version 同步更新，用于设置面板顶部展示“已更新”提示。
-  const EXTENSION_VERSION = "1.7";
-  const EXTENSION_BUILD_DATE = "2026-08-14";
-  // 当前版本更新内容（设置面板点击版本号弹窗展示；在线优先拉取 CHANGELOG.md，离线回退此内置文案；发布时同步更新）。
+  const EXTENSION_VERSION = "1.8.0";
+  const EXTENSION_BUILD_DATE = "2026-08-18";
+  // 当前版本更新内容（设置面板点击版本号弹窗直接展示此内置文案；发布时同步更新）。
   const CURRENT_VERSION_CHANGELOG = [
-    "### v1.7",
+    "### v1.8.0",
     "",
-    "- 新增：AI 建议回复——评论预览回复表单新增 ✨ AI 按钮，基于帖子内容与回复目标评论生成 3 条候选回复（认真客观 / 轻松幽默 / 简短直接三种风格），点击直接发送；支持重新生成。",
-    "- 新增：评论区观点总结——工具栏 📊 按钮，AI 总结评论区主要观点、争议点、高赞评论与整体风向。",
-    "- 新增：评论预览只看楼主开关与主评论楼层号显示。",
-    "- 新增：设置面板点击版本号可查看当前版本更新内容（在线拉取 CHANGELOG，离线回退内置文案）。",
-    "- 优化：AI 建议回复改为点击候选直接发送，无需二次确认。"
+    "- 移除：评论预览“只看楼主”开关与详情页“只看楼主”按钮，修复“看楼主”文字与开关圆点重叠问题。",
+    "- 恢复：评论预览工具栏三段式排序（默认 / 最新 / 作者优先）、📊 观点总结与屏蔽 CY 开关。",
+    "- 优化：设置面板点击版本号直接显示本版本更新内容，不再依赖 GitHub 在线拉取。",
+    "- 保留：主评论楼层号 #N 显示。"
   ].join("\n");
   const FEED_LAYOUT_SETTINGS_STORAGE_KEY = "better-xiaoheihe-feed-layout-settings";
   const HOT_SEARCH_DISABLED_STORAGE_KEY = "better-xiaoheihe-hot-search-disabled";
@@ -57,7 +55,6 @@
     BLOCKED_KEYWORDS_STORAGE_KEY,
     LEVEL_FILTERS_STORAGE_KEY,
     COMMENT_PREVIEW_SORT_STORAGE_KEY,
-    COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY,
     AI_BOT_SETTINGS_STORAGE_KEY,
     AI_BOT_LOGS_STORAGE_KEY,
     AI_BOT_MESSAGE_LOGS_STORAGE_KEY,

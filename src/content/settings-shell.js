@@ -371,39 +371,6 @@
 
   let versionChangelogDialog = null;
 
-  function escapeRegExpChars(value) {
-    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }
-
-  function extractCurrentVersionChangelog(markdown) {
-    const version = String(EXTENSION_VERSION || "").trim();
-    const text = String(markdown || "");
-    if (!version || !text.trim()) {
-      return "";
-    }
-    // 匹配 "## v1.7" / "## 1.7" / "## [v1.7]" 标题行，取其到下一个 ## 标题前的全部内容。
-    const headerRe = new RegExp(`^##\\s*\\[?v?${escapeRegExpChars(version)}\\]?\\b`);
-    const lines = text.split("\n");
-    let start = -1;
-    for (let i = 0; i < lines.length; i += 1) {
-      if (headerRe.test(lines[i])) {
-        start = i;
-        break;
-      }
-    }
-    if (start === -1) {
-      return "";
-    }
-    let end = lines.length;
-    for (let i = start + 1; i < lines.length; i += 1) {
-      if (/^##\s/.test(lines[i])) {
-        end = i;
-        break;
-      }
-    }
-    return lines.slice(start, end).join("\n").trim();
-  }
-
   function renderVersionChangelogDialog(title, content) {
     closeVersionChangelogDialog();
     const overlay = document.createElement("div");
@@ -466,46 +433,10 @@
     document.removeEventListener("keydown", handleVersionChangelogEscape);
   }
 
-  async function fetchCurrentVersionChangelog() {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 5000);
-    try {
-      const response = await fetch(`https://raw.githubusercontent.com/${GITHUB_REPO}/main/CHANGELOG.md`, {
-        signal: controller.signal
-      });
-      if (!response.ok) {
-        return "";
-      }
-      const text = await response.text();
-      return extractCurrentVersionChangelog(text);
-    } catch {
-      return "";
-    } finally {
-      window.clearTimeout(timeout);
-    }
-  }
-
   function openVersionChangelogPopup() {
     const version = String(EXTENSION_VERSION || "");
     const title = `v${escapeHtml(version)} 更新内容`;
     renderVersionChangelogDialog(title, String(CURRENT_VERSION_CHANGELOG || ""));
-    const body = document.querySelector(".better-settings__changelog-body");
-    if (body) {
-      body.textContent = "加载更新内容...";
-    }
-    fetchCurrentVersionChangelog().then((content) => {
-      if (!versionChangelogDialog) {
-        return;
-      }
-      const currentBody = document.querySelector(".better-settings__changelog-body");
-      if (!currentBody) {
-        return;
-      }
-      const finalContent = content || String(CURRENT_VERSION_CHANGELOG || "");
-      currentBody.replaceChildren(finalContent
-        ? renderMarkdownBlock(finalContent.split("\n"))
-        : document.createTextNode("暂无更新内容说明"));
-    });
   }
 
   function bindVersionBadgeClick(panel) {

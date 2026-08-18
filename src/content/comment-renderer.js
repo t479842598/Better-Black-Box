@@ -884,10 +884,6 @@
       <div class="better-comment-preview__toolbar">
         ${renderCommentSortControls()}
         <button class="better-comment-preview__opinions" type="button" title="AI 总结评论区观点">📊 观点总结</button>
-        <button class="better-comment-preview__only-owner-toggle" type="button" aria-pressed="${commentPreviewOnlyOwner ? "true" : "false"}" title="${commentPreviewOnlyOwner ? "显示全部评论" : "只看楼主"}">
-          <span class="better-comment-preview__cy-toggle-switch" aria-hidden="true"></span>
-          <span>只看楼主</span>
-        </button>
         <button class="better-comment-preview__cy-toggle" type="button" aria-pressed="${hideCyComments ? "true" : "false"}" title="${hideCyComments ? "显示插眼评论" : "屏蔽插眼评论"}">
           <span class="better-comment-preview__cy-toggle-switch" aria-hidden="true"></span>
           <span>屏蔽CY</span>
@@ -895,13 +891,6 @@
         ${hiddenCount ? `<span class="better-comment-preview__filtered-count" title="屏蔽CY的数量">${escapeHtml(hiddenCount)}</span>` : ""}
       </div>
     `;
-  }
-
-  function syncCommentOnlyOwnerControls() {
-    document.querySelectorAll(".better-comment-preview__only-owner-toggle").forEach((toggle) => {
-      toggle.setAttribute("aria-pressed", commentPreviewOnlyOwner ? "true" : "false");
-      toggle.setAttribute("title", commentPreviewOnlyOwner ? "显示全部评论" : "只看楼主");
-    });
   }
 
   function syncCyToggleControls() {
@@ -945,13 +934,6 @@
     return "";
   }
 
-  function applyCommentOnlyOwnerFilter(commentGroups) {
-    if (!commentPreviewOnlyOwner) {
-      return commentGroups;
-    }
-    return (commentGroups || []).filter((group) => isOwnerComment(group?.root));
-  }
-
   function renderCommentListContent(state, commentGroups, hiddenCount) {
     if (!commentGroups.length && state.loadingMore) {
       return '<div class="better-comment-preview__loading-more">评论加载中</div>';
@@ -962,11 +944,7 @@
     if (!commentGroups.length) {
       return '<div class="better-comment-preview__empty">暂无评论</div>';
     }
-    const visibleGroups = applyCommentOnlyOwnerFilter(commentGroups);
-    if (commentPreviewOnlyOwner && !visibleGroups.length) {
-      return '<div class="better-comment-preview__empty">暂无评论（只看楼主）</div>';
-    }
-    return `${visibleGroups.map((group) => renderCommentGroup(group, state?.activeReplyTarget, getCommentGroupOriginalIndex(group) + 1)).join("")}${renderCommentListFooter(state)}`;
+    return `${commentGroups.map((group) => renderCommentGroup(group, state?.activeReplyTarget, getCommentGroupOriginalIndex(group) + 1)).join("")}${renderCommentListFooter(state)}`;
   }
 
   function isActivePostCommentTarget(state) {

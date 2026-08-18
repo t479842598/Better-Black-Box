@@ -9,7 +9,6 @@
   const BLOCKED_KEYWORDS_STORAGE_KEY = "better-xiaoheihe-blocked-keywords";
   const LEVEL_FILTERS_STORAGE_KEY = "better-xiaoheihe-level-filters";
   const COMMENT_PREVIEW_SORT_STORAGE_KEY = "better-xiaoheihe-comment-preview-sort";
-  const COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY = "better-xiaoheihe-comment-preview-only-owner";
   const AI_SETTINGS_STORAGE_KEY = "better-xiaoheihe-ai-settings";
   const AI_MODEL_CACHE_STORAGE_KEY = "better-xiaoheihe-ai-model-cache";
   const AI_BOT_SETTINGS_STORAGE_KEY = "better-xiaoheihe-ai-bot-settings";
@@ -28,17 +27,16 @@
   const UI_STATE_STORAGE_KEY = "better-xiaoheihe-ui-state";
   const COMMENT_EMOJI_USAGE_STORAGE_KEY = "better-xiaoheihe-comment-emoji-usage";
   // 版本信息：发布时与 manifest.json 的 version 同步更新，用于设置面板顶部展示“已更新”提示。
-  const EXTENSION_VERSION = "1.7";
-  const EXTENSION_BUILD_DATE = "2026-08-14";
-  // 当前版本更新内容（设置面板点击版本号弹窗展示；在线优先拉取 CHANGELOG.md，离线回退此内置文案；发布时同步更新）。
+  const EXTENSION_VERSION = "1.8.0";
+  const EXTENSION_BUILD_DATE = "2026-08-18";
+  // 当前版本更新内容（设置面板点击版本号弹窗直接展示此内置文案；发布时同步更新）。
   const CURRENT_VERSION_CHANGELOG = [
-    "### v1.7",
+    "### v1.8.0",
     "",
-    "- 新增：AI 建议回复——评论预览回复表单新增 ✨ AI 按钮，基于帖子内容与回复目标评论生成 3 条候选回复（认真客观 / 轻松幽默 / 简短直接三种风格），点击直接发送；支持重新生成。",
-    "- 新增：评论区观点总结——工具栏 📊 按钮，AI 总结评论区主要观点、争议点、高赞评论与整体风向。",
-    "- 新增：评论预览只看楼主开关与主评论楼层号显示。",
-    "- 新增：设置面板点击版本号可查看当前版本更新内容（在线拉取 CHANGELOG，离线回退内置文案）。",
-    "- 优化：AI 建议回复改为点击候选直接发送，无需二次确认。"
+    "- 移除：评论预览“只看楼主”开关与详情页“只看楼主”按钮，修复“看楼主”文字与开关圆点重叠问题。",
+    "- 恢复：评论预览工具栏三段式排序（默认 / 最新 / 作者优先）、📊 观点总结与屏蔽 CY 开关。",
+    "- 优化：设置面板点击版本号直接显示本版本更新内容，不再依赖 GitHub 在线拉取。",
+    "- 保留：主评论楼层号 #N 显示。"
   ].join("\n");
   const FEED_LAYOUT_SETTINGS_STORAGE_KEY = "better-xiaoheihe-feed-layout-settings";
   const HOT_SEARCH_DISABLED_STORAGE_KEY = "better-xiaoheihe-hot-search-disabled";
@@ -57,7 +55,6 @@
     BLOCKED_KEYWORDS_STORAGE_KEY,
     LEVEL_FILTERS_STORAGE_KEY,
     COMMENT_PREVIEW_SORT_STORAGE_KEY,
-    COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY,
     AI_BOT_SETTINGS_STORAGE_KEY,
     AI_BOT_LOGS_STORAGE_KEY,
     AI_BOT_MESSAGE_LOGS_STORAGE_KEY,
@@ -400,7 +397,6 @@
   const capturedApiParams = {};
   let lastSavedApiParamsText = "";
   let hideCyComments = false;
-  let commentPreviewOnlyOwner = false;
   let commentPreviewSort = COMMENT_PREVIEW_SORTS.DEFAULT;
   let blockedKeywords = [];
   let levelFilters = normalizeLevelFilters({});
@@ -1156,9 +1152,6 @@
     hideCyComments = values[HIDE_CY_COMMENTS_STORAGE_KEY] === true
       || values[HIDE_CY_COMMENTS_STORAGE_KEY] === "1"
       || values[HIDE_CY_COMMENTS_STORAGE_KEY] === "true";
-    commentPreviewOnlyOwner = values[COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY] === true
-      || values[COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY] === "1"
-      || values[COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY] === "true";
     blockedKeywords = normalizeBlockedKeywords(values[BLOCKED_KEYWORDS_STORAGE_KEY]);
     levelFilters = normalizeLevelFilters(values[LEVEL_FILTERS_STORAGE_KEY]);
     commentPreviewSort = normalizeCommentPreviewSort(values[COMMENT_PREVIEW_SORT_STORAGE_KEY]);
@@ -7997,25 +7990,6 @@
         margin-top: 10px;
       }
 
-      /* ===== 详情页：只看楼主 ===== */
-      .${HOME_LAYOUT_CLASS} .link-comment .better-comment-preview__owner-toggle {
-        padding: 4px 10px;
-        border: 1px solid rgba(0, 0, 0, 0.12);
-        border-radius: 6px;
-        background: transparent;
-        color: inherit;
-        font-size: 12px;
-        cursor: pointer;
-      }
-      .${HOME_LAYOUT_CLASS} .link-comment .better-comment-preview__owner-toggle:hover {
-        background: rgba(0, 0, 0, 0.05);
-      }
-      .${HOME_LAYOUT_CLASS} .link-comment .better-comment-preview__owner-toggle.is-active {
-        border-color: #ff9d00;
-        color: #ff8a00;
-        font-weight: 600;
-      }
-
       /* ===== 收藏弹层导出按钮 ===== */
       .${HOME_LAYOUT_CLASS} .better-favorite-popover__export {
         margin-left: 8px;
@@ -10692,10 +10666,6 @@
       <div class="better-comment-preview__toolbar">
         ${renderCommentSortControls()}
         <button class="better-comment-preview__opinions" type="button" title="AI 总结评论区观点">📊 观点总结</button>
-        <button class="better-comment-preview__only-owner-toggle" type="button" aria-pressed="${commentPreviewOnlyOwner ? "true" : "false"}" title="${commentPreviewOnlyOwner ? "显示全部评论" : "只看楼主"}">
-          <span class="better-comment-preview__cy-toggle-switch" aria-hidden="true"></span>
-          <span>只看楼主</span>
-        </button>
         <button class="better-comment-preview__cy-toggle" type="button" aria-pressed="${hideCyComments ? "true" : "false"}" title="${hideCyComments ? "显示插眼评论" : "屏蔽插眼评论"}">
           <span class="better-comment-preview__cy-toggle-switch" aria-hidden="true"></span>
           <span>屏蔽CY</span>
@@ -10703,13 +10673,6 @@
         ${hiddenCount ? `<span class="better-comment-preview__filtered-count" title="屏蔽CY的数量">${escapeHtml(hiddenCount)}</span>` : ""}
       </div>
     `;
-  }
-
-  function syncCommentOnlyOwnerControls() {
-    document.querySelectorAll(".better-comment-preview__only-owner-toggle").forEach((toggle) => {
-      toggle.setAttribute("aria-pressed", commentPreviewOnlyOwner ? "true" : "false");
-      toggle.setAttribute("title", commentPreviewOnlyOwner ? "显示全部评论" : "只看楼主");
-    });
   }
 
   function syncCyToggleControls() {
@@ -10753,13 +10716,6 @@
     return "";
   }
 
-  function applyCommentOnlyOwnerFilter(commentGroups) {
-    if (!commentPreviewOnlyOwner) {
-      return commentGroups;
-    }
-    return (commentGroups || []).filter((group) => isOwnerComment(group?.root));
-  }
-
   function renderCommentListContent(state, commentGroups, hiddenCount) {
     if (!commentGroups.length && state.loadingMore) {
       return '<div class="better-comment-preview__loading-more">评论加载中</div>';
@@ -10770,11 +10726,7 @@
     if (!commentGroups.length) {
       return '<div class="better-comment-preview__empty">暂无评论</div>';
     }
-    const visibleGroups = applyCommentOnlyOwnerFilter(commentGroups);
-    if (commentPreviewOnlyOwner && !visibleGroups.length) {
-      return '<div class="better-comment-preview__empty">暂无评论（只看楼主）</div>';
-    }
-    return `${visibleGroups.map((group) => renderCommentGroup(group, state?.activeReplyTarget, getCommentGroupOriginalIndex(group) + 1)).join("")}${renderCommentListFooter(state)}`;
+    return `${commentGroups.map((group) => renderCommentGroup(group, state?.activeReplyTarget, getCommentGroupOriginalIndex(group) + 1)).join("")}${renderCommentListFooter(state)}`;
   }
 
   function isActivePostCommentTarget(state) {
@@ -11203,15 +11155,6 @@
     hideCyComments = isHidden;
     writeHideCyCommentsState(isHidden);
     syncCyToggleControls();
-    refreshAllCommentFilters();
-  }
-
-  function setCommentPreviewOnlyOwner(enabled) {
-    commentPreviewOnlyOwner = enabled;
-    saveLocalSettings({
-      [COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY]: enabled
-    });
-    syncCommentOnlyOwnerControls();
     refreshAllCommentFilters();
   }
 
@@ -12680,14 +12623,6 @@
         event.preventDefault();
         event.stopPropagation();
         setHideCyComments(!hideCyComments);
-        return;
-      }
-
-      const onlyOwnerToggle = event.target.closest(".better-comment-preview__only-owner-toggle");
-      if (onlyOwnerToggle && preview.contains(onlyOwnerToggle)) {
-        event.preventDefault();
-        event.stopPropagation();
-        setCommentPreviewOnlyOwner(!commentPreviewOnlyOwner);
         return;
       }
 
@@ -18117,39 +18052,6 @@
 
   let versionChangelogDialog = null;
 
-  function escapeRegExpChars(value) {
-    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }
-
-  function extractCurrentVersionChangelog(markdown) {
-    const version = String(EXTENSION_VERSION || "").trim();
-    const text = String(markdown || "");
-    if (!version || !text.trim()) {
-      return "";
-    }
-    // 匹配 "## v1.7" / "## 1.7" / "## [v1.7]" 标题行，取其到下一个 ## 标题前的全部内容。
-    const headerRe = new RegExp(`^##\\s*\\[?v?${escapeRegExpChars(version)}\\]?\\b`);
-    const lines = text.split("\n");
-    let start = -1;
-    for (let i = 0; i < lines.length; i += 1) {
-      if (headerRe.test(lines[i])) {
-        start = i;
-        break;
-      }
-    }
-    if (start === -1) {
-      return "";
-    }
-    let end = lines.length;
-    for (let i = start + 1; i < lines.length; i += 1) {
-      if (/^##\s/.test(lines[i])) {
-        end = i;
-        break;
-      }
-    }
-    return lines.slice(start, end).join("\n").trim();
-  }
-
   function renderVersionChangelogDialog(title, content) {
     closeVersionChangelogDialog();
     const overlay = document.createElement("div");
@@ -18212,46 +18114,10 @@
     document.removeEventListener("keydown", handleVersionChangelogEscape);
   }
 
-  async function fetchCurrentVersionChangelog() {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 5000);
-    try {
-      const response = await fetch(`https://raw.githubusercontent.com/${GITHUB_REPO}/main/CHANGELOG.md`, {
-        signal: controller.signal
-      });
-      if (!response.ok) {
-        return "";
-      }
-      const text = await response.text();
-      return extractCurrentVersionChangelog(text);
-    } catch {
-      return "";
-    } finally {
-      window.clearTimeout(timeout);
-    }
-  }
-
   function openVersionChangelogPopup() {
     const version = String(EXTENSION_VERSION || "");
     const title = `v${escapeHtml(version)} 更新内容`;
     renderVersionChangelogDialog(title, String(CURRENT_VERSION_CHANGELOG || ""));
-    const body = document.querySelector(".better-settings__changelog-body");
-    if (body) {
-      body.textContent = "加载更新内容...";
-    }
-    fetchCurrentVersionChangelog().then((content) => {
-      if (!versionChangelogDialog) {
-        return;
-      }
-      const currentBody = document.querySelector(".better-settings__changelog-body");
-      if (!currentBody) {
-        return;
-      }
-      const finalContent = content || String(CURRENT_VERSION_CHANGELOG || "");
-      currentBody.replaceChildren(finalContent
-        ? renderMarkdownBlock(finalContent.split("\n"))
-        : document.createTextNode("暂无更新内容说明"));
-    });
   }
 
   function bindVersionBadgeClick(panel) {
@@ -20978,37 +20844,6 @@
   // BEGIN src\content\link-page.js
 // 帖子详情页评论过滤、排序和详情页 AI 总结入口。
 // 本文件由原入口文件等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
-  let linkPageOnlyOwner = false;
-
-  function getLinkPageOwnerUsername() {
-    const linkId = getCurrentLinkId();
-    const state = commentCache.get(linkId);
-    const groups = Array.isArray(state?.commentGroups) ? state.commentGroups : [];
-    for (const group of groups) {
-      const candidates = [group?.root, ...(Array.isArray(group?.replies) ? group.replies : [])];
-      for (const comment of candidates) {
-        if (comment?.is_link_owner === 1 || comment?.is_link_owner === true) {
-          return getUserDisplayName(comment.user);
-        }
-      }
-    }
-    const detailUser = state?.linkDetail?.user || state?.linkDetail?.author;
-    return getUserDisplayName(detailUser) || "";
-  }
-
-  function isLinkPageCommentFromOwner(item) {
-    if (!linkPageOnlyOwner) {
-      return true;
-    }
-    const ownerName = getLinkPageOwnerUsername();
-    if (!ownerName) {
-      return true;
-    }
-    const usernameEl = item.querySelector('.info-box__username, .children-item__comment-creator');
-    const username = usernameEl?.textContent?.trim() || '';
-    return username === ownerName;
-  }
-
   function filterLinkPageComments() {
     if (!isLinkPage()) {
       return 0;
@@ -21035,9 +20870,8 @@
       const isTopLevelCy = topLevelContentEl?.classList.contains('cy') || topLevelUsername.toLowerCase().includes('cy');
       const isTopLevelBlocked = isBlockedByKeyword({ text: topLevelContentText, user: { username: topLevelUsername } });
       const isTopLevelBlockedByLevel = shouldHideByLevel(topLevelUserLevel, BLOCKED_KEYWORD_SCOPES.COMMENT);
-      const isTopLevelNotOwner = !isLinkPageCommentFromOwner(topLevelItem);
 
-      if ((hideCyComments && isTopLevelCy) || isTopLevelBlocked || isTopLevelBlockedByLevel || isTopLevelNotOwner) {
+      if ((hideCyComments && isTopLevelCy) || isTopLevelBlocked || isTopLevelBlockedByLevel) {
         topLevelItem.style.display = 'none';
         hiddenCount++; // Count the hidden top-level comment
       } else {
@@ -21052,9 +20886,8 @@
           const isReplyCy = replyContentEl?.classList.contains('cy') || replyUsername.toLowerCase().includes('cy');
           const isReplyBlocked = isBlockedByKeyword({ text: replyContentText, user: { username: replyUsername } });
           const isReplyBlockedByLevel = shouldHideByLevel(replyUserLevel, BLOCKED_KEYWORD_SCOPES.COMMENT);
-          const isReplyNotOwner = !isLinkPageCommentFromOwner(replyItem);
 
-          if ((hideCyComments && isReplyCy) || isReplyBlocked || isReplyBlockedByLevel || isReplyNotOwner) {
+          if ((hideCyComments && isReplyCy) || isReplyBlocked || isReplyBlockedByLevel) {
             replyItem.style.display = 'none';
             hiddenCount++; // Count each hidden reply
           }
@@ -21282,24 +21115,11 @@
 
       toggleButton.append(switchSpan, labelSpan);
 
-      const ownerButton = document.createElement('button');
-      ownerButton.className = 'better-comment-preview__owner-toggle';
-      ownerButton.type = 'button';
-      ownerButton.textContent = '只看楼主';
-      ownerButton.setAttribute('aria-pressed', linkPageOnlyOwner ? 'true' : 'false');
-      ownerButton.addEventListener('click', () => {
-        linkPageOnlyOwner = !linkPageOnlyOwner;
-        ownerButton.setAttribute('aria-pressed', linkPageOnlyOwner ? 'true' : 'false');
-        ownerButton.classList.toggle('is-active', linkPageOnlyOwner);
-        scheduleLinkPageFilterRefresh();
-      });
-
-      toolbar.append(sortControls, toggleButton, ownerButton, countSpan);
-
       toggleButton.addEventListener('click', () => {
         setHideCyComments(!hideCyComments);
       });
 
+      toolbar.append(sortControls, toggleButton, countSpan);
       mountPoint.append(toolbar);
     }
 

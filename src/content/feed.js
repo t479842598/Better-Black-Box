@@ -209,15 +209,6 @@
     refreshAllCommentFilters();
   }
 
-  function setCommentPreviewOnlyOwner(enabled) {
-    commentPreviewOnlyOwner = enabled;
-    saveLocalSettings({
-      [COMMENT_PREVIEW_ONLY_OWNER_STORAGE_KEY]: enabled
-    });
-    syncCommentOnlyOwnerControls();
-    refreshAllCommentFilters();
-  }
-
   function setCommentPreviewSort(sort) {
     commentPreviewSort = normalizeCommentPreviewSort(sort);
     writeCommentPreviewSortState(commentPreviewSort);
@@ -1683,14 +1674,6 @@
         event.preventDefault();
         event.stopPropagation();
         setHideCyComments(!hideCyComments);
-        return;
-      }
-
-      const onlyOwnerToggle = event.target.closest(".better-comment-preview__only-owner-toggle");
-      if (onlyOwnerToggle && preview.contains(onlyOwnerToggle)) {
-        event.preventDefault();
-        event.stopPropagation();
-        setCommentPreviewOnlyOwner(!commentPreviewOnlyOwner);
         return;
       }
 

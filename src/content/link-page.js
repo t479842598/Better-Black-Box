@@ -1,36 +1,5 @@
 // 帖子详情页评论过滤、排序和详情页 AI 总结入口。
 // 本文件由原入口文件等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
-  let linkPageOnlyOwner = false;
-
-  function getLinkPageOwnerUsername() {
-    const linkId = getCurrentLinkId();
-    const state = commentCache.get(linkId);
-    const groups = Array.isArray(state?.commentGroups) ? state.commentGroups : [];
-    for (const group of groups) {
-      const candidates = [group?.root, ...(Array.isArray(group?.replies) ? group.replies : [])];
-      for (const comment of candidates) {
-        if (comment?.is_link_owner === 1 || comment?.is_link_owner === true) {
-          return getUserDisplayName(comment.user);
-        }
-      }
-    }
-    const detailUser = state?.linkDetail?.user || state?.linkDetail?.author;
-    return getUserDisplayName(detailUser) || "";
-  }
-
-  function isLinkPageCommentFromOwner(item) {
-    if (!linkPageOnlyOwner) {
-      return true;
-    }
-    const ownerName = getLinkPageOwnerUsername();
-    if (!ownerName) {
-      return true;
-    }
-    const usernameEl = item.querySelector('.info-box__username, .children-item__comment-creator');
-    const username = usernameEl?.textContent?.trim() || '';
-    return username === ownerName;
-  }
-
   function filterLinkPageComments() {
     if (!isLinkPage()) {
       return 0;
@@ -57,9 +26,8 @@
       const isTopLevelCy = topLevelContentEl?.classList.contains('cy') || topLevelUsername.toLowerCase().includes('cy');
       const isTopLevelBlocked = isBlockedByKeyword({ text: topLevelContentText, user: { username: topLevelUsername } });
       const isTopLevelBlockedByLevel = shouldHideByLevel(topLevelUserLevel, BLOCKED_KEYWORD_SCOPES.COMMENT);
-      const isTopLevelNotOwner = !isLinkPageCommentFromOwner(topLevelItem);
 
-      if ((hideCyComments && isTopLevelCy) || isTopLevelBlocked || isTopLevelBlockedByLevel || isTopLevelNotOwner) {
+      if ((hideCyComments && isTopLevelCy) || isTopLevelBlocked || isTopLevelBlockedByLevel) {
         topLevelItem.style.display = 'none';
         hiddenCount++; // Count the hidden top-level comment
       } else {
@@ -74,9 +42,8 @@
           const isReplyCy = replyContentEl?.classList.contains('cy') || replyUsername.toLowerCase().includes('cy');
           const isReplyBlocked = isBlockedByKeyword({ text: replyContentText, user: { username: replyUsername } });
           const isReplyBlockedByLevel = shouldHideByLevel(replyUserLevel, BLOCKED_KEYWORD_SCOPES.COMMENT);
-          const isReplyNotOwner = !isLinkPageCommentFromOwner(replyItem);
 
-          if ((hideCyComments && isReplyCy) || isReplyBlocked || isReplyBlockedByLevel || isReplyNotOwner) {
+          if ((hideCyComments && isReplyCy) || isReplyBlocked || isReplyBlockedByLevel) {
             replyItem.style.display = 'none';
             hiddenCount++; // Count each hidden reply
           }
@@ -304,24 +271,11 @@
 
       toggleButton.append(switchSpan, labelSpan);
 
-      const ownerButton = document.createElement('button');
-      ownerButton.className = 'better-comment-preview__owner-toggle';
-      ownerButton.type = 'button';
-      ownerButton.textContent = '只看楼主';
-      ownerButton.setAttribute('aria-pressed', linkPageOnlyOwner ? 'true' : 'false');
-      ownerButton.addEventListener('click', () => {
-        linkPageOnlyOwner = !linkPageOnlyOwner;
-        ownerButton.setAttribute('aria-pressed', linkPageOnlyOwner ? 'true' : 'false');
-        ownerButton.classList.toggle('is-active', linkPageOnlyOwner);
-        scheduleLinkPageFilterRefresh();
-      });
-
-      toolbar.append(sortControls, toggleButton, ownerButton, countSpan);
-
       toggleButton.addEventListener('click', () => {
         setHideCyComments(!hideCyComments);
       });
 
+      toolbar.append(sortControls, toggleButton, countSpan);
       mountPoint.append(toolbar);
     }
 
