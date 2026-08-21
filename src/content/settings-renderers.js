@@ -20,46 +20,10 @@
           </label>
         </div>
         <div class="better-settings__ai-body">
-          <details class="better-settings__collapsible-section" data-connection-config="ai"${uiState.aiConnectionConfigOpen ? " open" : ""}>
-            <summary class="better-settings__collapsible-summary">
-              <span class="better-settings__connection-title">接入配置 ${renderAiConnectionDot("ai", aiSettings)}</span>
-              <span class="better-settings__collapsible-indicator" aria-hidden="true"></span>
-            </summary>
-            <label class="better-settings__field">
-              <span class="better-settings__field-title">服务商类型</span>
-              <select class="better-settings__select better-settings__ai-provider">
-                ${renderAiProviderOptions()}
-              </select>
-            </label>
-            <label class="better-settings__field">
-              <span class="better-settings__field-title">Base URL</span>
-              <input class="better-settings__text-input better-settings__ai-base-url" name="better-xiaoheihe-ai-base-url" type="url" value="${escapeHtml(aiSettings.baseUrl)}" autocomplete="section-better-xiaoheihe-ai username" placeholder="https://api.openai.com/v1">
-            </label>
-            <label class="better-settings__field">
-              <span class="better-settings__field-title">
-                模型
-                <button class="better-settings__text-button better-settings__ai-fetch-models" type="button">拉取模型</button>
-              </span>
-              <div class="better-settings__ai-model-combobox">
-                <input class="better-settings__text-input better-settings__ai-model" name="better-xiaoheihe-ai-model" type="text" value="${escapeHtml(aiSettings.model)}" autocomplete="off" placeholder="gpt-4.1-mini">
-                <button class="better-settings__ai-model-dropdown" type="button" aria-label="选择已拉取模型" aria-expanded="false" disabled></button>
-                <div class="better-settings__ai-model-menu" role="listbox" hidden></div>
-              </div>
-            </label>
-            <label class="better-settings__field">
-              <span class="better-settings__field-title">API Key</span>
-              <div class="better-settings__connection-input">
-                <div class="better-settings__secret-input">
-                  <input class="better-settings__text-input better-settings__ai-api-key" name="better-xiaoheihe-ai-api-key" type="password" value="${escapeHtml(aiSettings.apiKey)}" autocomplete="section-better-xiaoheihe-ai current-password" placeholder="sk-...">
-                  <button class="better-settings__secret-toggle" type="button" data-secret-input=".better-settings__ai-api-key" aria-label="显示 API Key" aria-pressed="false">显示</button>
-                </div>
-                <button class="better-settings__primary better-settings__connection-test better-settings__ai-test" type="button">测试连通</button>
-              </div>
-            </label>
-            <div class="better-settings__config-actions">
-              <span class="better-settings__message" role="status">${isAiConfigured() ? "已配置" : "请填写 Base URL 和模型"}</span>
-            </div>
-          </details>
+          <div class="better-settings__current-provider">
+            <span class="better-settings__current-provider-text">当前服务商：${escapeHtml(getAiProviderLabel(aiSettings.provider))} · ${escapeHtml(aiSettings.model || "未设置模型")}</span>
+            <button class="better-settings__text-button better-settings__goto-models" type="button">在「AI 模型」页更改</button>
+          </div>
           <details class="better-settings__collapsible-section better-settings__ai-prompt-section" data-ai-prompt-section${uiState.aiPromptSettingsOpen ? " open" : ""}>
             <summary class="better-settings__collapsible-summary better-settings__ai-prompt-summary">
               <span class="better-settings__connection-title">提示词设置</span>
@@ -101,6 +65,81 @@
               </div>
             </div>
           </details>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderAiModelsPanelContent() {
+    return `
+      <div class="better-settings__section better-settings__ai-section">
+        <div class="better-settings__ai-header">
+          <div>
+            <div class="better-settings__ai-title">AI 模型</div>
+            <div class="better-settings__ai-subtitle">AI 总结 / 导读 / 省钱助手等 AI 功能共用的模型来源</div>
+          </div>
+        </div>
+        <div class="better-settings__ai-body">
+          <details class="better-settings__collapsible-section" data-connection-config="ai"${uiState.aiConnectionConfigOpen ? " open" : ""}>
+            <summary class="better-settings__collapsible-summary">
+              <span class="better-settings__connection-title">自定义服务商 ${renderAiConnectionDot("ai", aiSettings)}</span>
+              <span class="better-settings__collapsible-indicator" aria-hidden="true"></span>
+            </summary>
+            <label class="better-settings__field">
+              <span class="better-settings__field-title">服务商类型</span>
+              <select class="better-settings__select better-settings__ai-provider">
+                ${renderAiProviderOptions()}
+              </select>
+            </label>
+            <label class="better-settings__field">
+              <span class="better-settings__field-title">Base URL</span>
+              <input class="better-settings__text-input better-settings__ai-base-url" name="better-xiaoheihe-ai-base-url" type="url" value="${escapeHtml(aiSettings.baseUrl)}" autocomplete="section-better-xiaoheihe-ai username" placeholder="https://api.openai.com/v1">
+            </label>
+            <label class="better-settings__field">
+              <span class="better-settings__field-title">
+                模型
+                <button class="better-settings__text-button better-settings__ai-fetch-models" type="button">拉取模型</button>
+              </span>
+              <div class="better-settings__ai-model-combobox">
+                <input class="better-settings__text-input better-settings__ai-model" name="better-xiaoheihe-ai-model" type="text" value="${escapeHtml(aiSettings.model)}" autocomplete="off" placeholder="gpt-4.1-mini">
+                <button class="better-settings__ai-model-dropdown" type="button" aria-label="选择已拉取模型" aria-expanded="false" disabled></button>
+                <div class="better-settings__ai-model-menu" role="listbox" hidden></div>
+              </div>
+            </label>
+            <label class="better-settings__field">
+              <span class="better-settings__field-title">API Key</span>
+              <div class="better-settings__connection-input">
+                <div class="better-settings__secret-input">
+                  <input class="better-settings__text-input better-settings__ai-api-key" name="better-xiaoheihe-ai-api-key" type="password" value="${escapeHtml(aiSettings.apiKey)}" autocomplete="section-better-xiaoheihe-ai current-password" placeholder="sk-...">
+                  <button class="better-settings__secret-toggle" type="button" data-secret-input=".better-settings__ai-api-key" aria-label="显示 API Key" aria-pressed="false">显示</button>
+                </div>
+                <button class="better-settings__primary better-settings__connection-test better-settings__ai-test" type="button">测试连通</button>
+              </div>
+            </label>
+            <div class="better-settings__config-actions">
+              <span class="better-settings__message" role="status">${isAiConfigured() ? "已配置" : "请填写 Base URL 和模型"}</span>
+            </div>
+          </details>
+          <div class="better-settings__section better-settings__ai-feature-section">
+            <div class="better-settings__section-title">AI 增强功能</div>
+            <div class="better-settings__desc">这些功能共用上方选择的模型，默认开启。</div>
+            <label class="better-settings__ai-prompt-option">
+              <span class="better-settings__ai-prompt-option-copy">
+                <span class="better-settings__ai-prompt-option-title">长帖 AI 导读</span>
+                <span class="better-settings__ai-prompt-option-desc">长帖标题旁一键生成结论与要点</span>
+              </span>
+              <input class="better-settings__post-brief-enabled" type="checkbox"${(aiSettings.postBrief?.enabled !== false) ? " checked" : ""}>
+              <span class="better-settings__ai-prompt-option-switch" aria-hidden="true"><span></span></span>
+            </label>
+            <label class="better-settings__ai-prompt-option">
+              <span class="better-settings__ai-prompt-option-copy">
+                <span class="better-settings__ai-prompt-option-title">促销帖省钱助手</span>
+                <span class="better-settings__ai-prompt-option-desc">自动解析限免/折扣帖并对比史低</span>
+              </span>
+              <input class="better-settings__deal-card-enabled" type="checkbox"${(aiSettings.dealCard?.enabled !== false) ? " checked" : ""}>
+              <span class="better-settings__ai-prompt-option-switch" aria-hidden="true"><span></span></span>
+            </label>
+          </div>
         </div>
       </div>
     `;

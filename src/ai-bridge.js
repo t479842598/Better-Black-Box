@@ -27,16 +27,21 @@
   const UI_STATE_STORAGE_KEY = "better-xiaoheihe-ui-state";
   const COMMENT_EMOJI_USAGE_STORAGE_KEY = "better-xiaoheihe-comment-emoji-usage";
   // 版本信息：发布时与 manifest.json 的 version 同步更新，用于设置面板顶部展示“已更新”提示。
-  const EXTENSION_VERSION = "1.8.0";
-  const EXTENSION_BUILD_DATE = "2026-08-18";
+  const EXTENSION_VERSION = "1.9.0";
+  const EXTENSION_BUILD_DATE = "2026-08-21";
   // 当前版本更新内容（设置面板点击版本号弹窗直接展示此内置文案；发布时同步更新）。
   const CURRENT_VERSION_CHANGELOG = [
-    "### v1.8.0",
+    "### v1.9.0",
     "",
-    "- 移除：评论预览“只看楼主”开关与详情页“只看楼主”按钮，修复“看楼主”文字与开关圆点重叠问题。",
-    "- 恢复：评论预览工具栏三段式排序（默认 / 最新 / 作者优先）、📊 观点总结与屏蔽 CY 开关。",
-    "- 优化：设置面板点击版本号直接显示本版本更新内容，不再依赖 GitHub 在线拉取。",
-    "- 保留：主评论楼层号 #N 显示。"
+    "- 新增：「AI 模型」设置页——自定义服务商管理，支持拉取模型列表、测试连通。",
+    "- 新增：长帖 AI 导读——超长帖子标题旁一键生成「结论+3 要点」。",
+    "- 新增：促销帖省钱助手——自动解析限免/折扣帖为卡片，并记录史低价格对比。",
+    "- 新增：AI 语义屏蔽——用 AI 识别剧透/引战/软广并自动折叠（屏蔽页手动开启）。",
+    "- 新增：我的足迹——自动记录浏览过的帖子，聚合浏览历史与稍后读。",
+    "- 新增：AI 建议回复显示生成耗时。",
+    "- 修复：评论预览栏时有时无、观点总结报错、版本号显示不同步。",
+    "- 性能：构建产物压缩减半、Observer 局部化、内存缓存 LRU。",
+    "- 移除：内置 Gemini 本地模型（占用内存过大）。"
   ].join("\n");
   const FEED_LAYOUT_SETTINGS_STORAGE_KEY = "better-xiaoheihe-feed-layout-settings";
   const HOT_SEARCH_DISABLED_STORAGE_KEY = "better-xiaoheihe-hot-search-disabled";
@@ -47,6 +52,10 @@
   const HIGHLIGHT_KEYWORDS_STORAGE_KEY = "better-xiaoheihe-highlight-keywords";
   const COMMENT_DRAFT_STORAGE_KEY = "better-xiaoheihe-comment-drafts";
   const READ_LATER_STORAGE_KEY = "better-xiaoheihe-read-later";
+  const READING_HISTORY_STORAGE_KEY = "better-xiaoheihe-reading-history";
+  const SEMANTIC_BLOCK_ENABLED_STORAGE_KEY = "better-xiaoheihe-semantic-block-enabled";
+  const SEMANTIC_BLOCK_INTENTS_STORAGE_KEY = "better-xiaoheihe-semantic-block-intents";
+  const SEMANTIC_BLOCK_POSTS_STORAGE_KEY = "better-xiaoheihe-semantic-block-posts";
   const AI_SUMMARY_HISTORY_STORAGE_KEY = "better-xiaoheihe-ai-summary-history";
   const AI_SUMMARY_ASK_PENDING_STORAGE_KEY = "better-xiaoheihe-ai-summary-ask-pending";
 
@@ -70,6 +79,10 @@
     HIGHLIGHT_KEYWORDS_STORAGE_KEY,
     COMMENT_DRAFT_STORAGE_KEY,
     READ_LATER_STORAGE_KEY,
+    READING_HISTORY_STORAGE_KEY,
+    SEMANTIC_BLOCK_ENABLED_STORAGE_KEY,
+    SEMANTIC_BLOCK_INTENTS_STORAGE_KEY,
+    SEMANTIC_BLOCK_POSTS_STORAGE_KEY,
     MENTION_NOTIFY_STORAGE_KEY,
     AI_SUMMARY_HISTORY_STORAGE_KEY,
     AI_SUMMARY_ASK_PENDING_STORAGE_KEY
@@ -166,9 +179,18 @@
       baseUrl: normalizeBaseUrl(settings?.baseUrl, provider),
       model: String(settings?.model || "").trim(),
       apiKey: String(settings?.apiKey || ""),
+      temperature: Number.isFinite(settings?.temperature) ? settings.temperature : 0.2,
       allowEmoji: settings?.allowEmoji !== false,
       autoPopup: settings?.autoPopup !== false,
-      summaryPrompt: String(settings?.summaryPrompt || "").trim() || DEFAULT_SUMMARY_PROMPT
+      summaryPrompt: String(settings?.summaryPrompt || "").trim() || DEFAULT_SUMMARY_PROMPT,
+      postBrief: {
+        enabled: settings?.postBrief?.enabled !== false,
+        minLength: Math.max(200, Number(settings?.postBrief?.minLength) || 800)
+      },
+      dealCard: {
+        enabled: settings?.dealCard?.enabled !== false,
+        autoAnalyze: settings?.dealCard?.autoAnalyze !== false
+      }
     };
   }
 

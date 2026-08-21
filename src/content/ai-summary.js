@@ -163,11 +163,18 @@
       header.addEventListener("pointercancel", stopDragging);
       event.preventDefault();
     });
+    let resizeRaf = 0;
     window.addEventListener("resize", () => {
-      if (!modal.hidden) {
-        positionAiSummaryDialog(dialog);
+      if (resizeRaf) {
+        return;
       }
-    });
+      resizeRaf = window.requestAnimationFrame(() => {
+        resizeRaf = 0;
+        if (!modal.hidden) {
+          positionAiSummaryDialog(dialog);
+        }
+      });
+    }, { passive: true });
     document.body.appendChild(modal);
     return modal;
   }
@@ -254,7 +261,7 @@
 
   function syncAiSummaryChatPanel(modal, linkId) {
     const messagesElement = modal.querySelector(".better-ai-summary__chat-messages");
-    const cacheEntry = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
+    const cacheEntry = normalizeAiSummaryCacheEntry(lruCacheGet(aiSummaryCache, linkId));
     renderAiSummaryChatMessages(messagesElement, cacheEntry.chatMessages);
     setAiSummaryChatControls(modal, Boolean(linkId && cacheEntry.content && cacheEntry.payload && isAiConfigured() && !aiSummaryChatSending.has(linkId)));
   }
@@ -295,9 +302,9 @@
   }
 
   function updateAiSummaryChatCache(linkId, updater) {
-    const entry = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
+    const entry = normalizeAiSummaryCacheEntry(lruCacheGet(aiSummaryCache, linkId));
     const nextEntry = updater(entry) || entry;
-    aiSummaryCache.set(linkId, nextEntry);
+    lruCacheSet(aiSummaryCache, linkId, nextEntry);
     persistAiSummaryHistory(linkId, nextEntry);
     return nextEntry;
   }
@@ -310,7 +317,7 @@
       return;
     }
 
-    const entry = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
+    const entry = normalizeAiSummaryCacheEntry(lruCacheGet(aiSummaryCache, linkId));
     if (!entry.content || !entry.payload || !isAiConfigured()) {
       syncAiSummaryChatPanel(modal, linkId);
       return;
@@ -561,12 +568,12 @@
   }
 
   function getCachedSummaryCommentLines(linkId) {
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     return getSummaryCommentLines(state?.commentGroups);
   }
 
   function getCachedLinkDetail(linkId) {
-    return commentCache.get(linkId)?.linkDetail || null;
+    return lruCacheGet(commentCache, linkId)?.linkDetail || null;
   }
 
   function ensureLinkDetail(linkId) {
@@ -727,7 +734,7 @@
   }
 
   function mergeSummaryCommentPageState(linkId, page, data) {
-    const state = cacheCommentPageFromApiData(linkId, page, data) || commentCache.get(linkId) || { commentGroups: [] };
+    const state = cacheCommentPageFromApiData(linkId, page, data) || lruCacheGet(commentCache, linkId) || { commentGroups: [] };
     renderLinkedPreviews(linkId);
     return state;
   }
@@ -735,7 +742,7 @@
   function fetchSummaryCommentPages(linkId, page = 1) {
     return fetchCommentPageData(linkId, page).then((data) => {
       if (data?.status !== "ok") {
-        return commentCache.get(linkId);
+        return lruCacheGet(commentCache, linkId);
       }
 
       const state = mergeSummaryCommentPageState(linkId, page, data);
@@ -744,11 +751,11 @@
       }
 
       return fetchSummaryCommentPages(linkId, page + 1);
-    }).catch(() => commentCache.get(linkId));
+    }).catch(() => lruCacheGet(commentCache, linkId));
   }
 
   function ensureSummaryComments(linkId) {
-    const cachedState = commentCache.get(linkId);
+    const cachedState = lruCacheGet(commentCache, linkId);
     if (hasLoadedAllSummaryComments(cachedState)) {
       return Promise.resolve(getSummaryCommentLines(cachedState.commentGroups));
     }
@@ -788,7 +795,7 @@
 
     const title = item.querySelector(".bbs-content__title")?.textContent?.trim() || "AI 总结";
     if (!options.force && aiSummaryCache.has(linkId)) {
-      const cachedSummary = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
+      const cachedSummary = normalizeAiSummaryCacheEntry(lruCacheGet(aiSummaryCache, linkId));
       setAiButtonComplete(button, true);
       setAiSummaryModal(title, cachedSummary.content, false, linkId, cachedSummary.elapsedMs);
       return;
@@ -816,8 +823,8 @@
     }).then(({ summary, payload }) => {
       const elapsedMs = performance.now() - summaryStartTime;
       const content = cleanAiSummaryContent(summary, aiSettings.allowEmoji) || "没有生成总结。";
-      aiSummaryCache.set(linkId, { content, elapsedMs, payload, chatMessages: [] });
-      persistAiSummaryHistory(linkId, aiSummaryCache.get(linkId), { title });
+      lruCacheSet(aiSummaryCache, linkId, { content, elapsedMs, payload, chatMessages: [] });
+      persistAiSummaryHistory(linkId, lruCacheGet(aiSummaryCache, linkId), { title });
       setAiButtonComplete(button, true);
       if (aiSettings.autoPopup) {
         setAiSummaryModal(title, content, false, linkId, elapsedMs);
@@ -838,7 +845,7 @@
 
     const title = getLinkPageTitle() || "AI 总结";
     if (!options.force && aiSummaryCache.has(linkId)) {
-      const cachedSummary = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
+      const cachedSummary = normalizeAiSummaryCacheEntry(lruCacheGet(aiSummaryCache, linkId));
       setAiButtonComplete(button, true);
       setAiSummaryModal(title, cachedSummary.content, false, linkId, cachedSummary.elapsedMs);
       return;
@@ -866,8 +873,8 @@
     }).then(({ summary, payload }) => {
       const elapsedMs = performance.now() - summaryStartTime;
       const content = cleanAiSummaryContent(summary, aiSettings.allowEmoji) || "没有生成总结。";
-      aiSummaryCache.set(linkId, { content, elapsedMs, payload, chatMessages: [] });
-      persistAiSummaryHistory(linkId, aiSummaryCache.get(linkId), { title });
+      lruCacheSet(aiSummaryCache, linkId, { content, elapsedMs, payload, chatMessages: [] });
+      persistAiSummaryHistory(linkId, lruCacheGet(aiSummaryCache, linkId), { title });
       setAiButtonComplete(button, true);
       if (aiSettings.autoPopup) {
         setAiSummaryModal(title, content, false, linkId, elapsedMs);

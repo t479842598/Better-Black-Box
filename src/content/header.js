@@ -78,16 +78,23 @@
         <div class="better-message-popover__state">点击刷新查看收藏</div>
       </div>
     `;
+    let favoritePopoverScrollRaf = 0;
     popover.querySelector(".better-message-popover__body")?.addEventListener("scroll", (event) => {
-      const body = event.currentTarget;
-      if (
-        favoritePopoverState.hasMore
-        && !favoritePopoverState.loading
-        && body.scrollTop + body.clientHeight >= body.scrollHeight - 80
-      ) {
-        fetchAndRenderFavouritePosts({ append: true });
+      if (favoritePopoverScrollRaf) {
+        return;
       }
-    });
+      const body = event.currentTarget;
+      favoritePopoverScrollRaf = window.requestAnimationFrame(() => {
+        favoritePopoverScrollRaf = 0;
+        if (
+          favoritePopoverState.hasMore
+          && !favoritePopoverState.loading
+          && body.scrollTop + body.clientHeight >= body.scrollHeight - 80
+        ) {
+          fetchAndRenderFavouritePosts({ append: true });
+        }
+      });
+    }, { passive: true });
     bindHeaderPopoverInteractions(popover);
     document.body.appendChild(popover);
     return popover;
@@ -129,17 +136,24 @@
         setMessagePopoverTab(tab.dataset.messageTab || "reply");
       });
     });
+    let messagePopoverScrollRaf = 0;
     popover.querySelector(".better-message-popover__body")?.addEventListener("scroll", (event) => {
+      if (messagePopoverScrollRaf) {
+        return;
+      }
       const body = event.currentTarget;
       const state = getActiveMessageTabState();
-      if (
-        state.hasMore
-        && !state.loading
-        && body.scrollTop + body.clientHeight >= body.scrollHeight - 80
-      ) {
-        fetchAndRenderReplyMessages({ append: true });
-      }
-    });
+      messagePopoverScrollRaf = window.requestAnimationFrame(() => {
+        messagePopoverScrollRaf = 0;
+        if (
+          state.hasMore
+          && !state.loading
+          && body.scrollTop + body.clientHeight >= body.scrollHeight - 80
+        ) {
+          fetchAndRenderReplyMessages({ append: true });
+        }
+      });
+    }, { passive: true });
     bindHeaderPopoverInteractions(popover);
     document.body.appendChild(popover);
     return popover;
@@ -780,13 +794,20 @@
       }
       closeMessagePopover();
     }, true);
+    let messagePopoverResizeRaf = 0;
     window.addEventListener("resize", () => {
-      const popover = document.querySelector(`.${MESSAGE_POPOVER_CLASS}`);
-      const button = document.querySelector(`.${HEADER_MESSAGE_CLASS}`);
-      if (popover && button && !popover.hidden) {
-        positionMessagePopover(button, popover);
+      if (messagePopoverResizeRaf) {
+        return;
       }
-    });
+      messagePopoverResizeRaf = window.requestAnimationFrame(() => {
+        messagePopoverResizeRaf = 0;
+        const popover = document.querySelector(`.${MESSAGE_POPOVER_CLASS}`);
+        const button = document.querySelector(`.${HEADER_MESSAGE_CLASS}`);
+        if (popover && button && !popover.hidden) {
+          positionMessagePopover(button, popover);
+        }
+      });
+    }, { passive: true });
   }
 
   function toggleMessagePopover(button) {
@@ -828,13 +849,20 @@
       }
       closeFavoritePopover();
     }, true);
+    let favoritePopoverResizeRaf = 0;
     window.addEventListener("resize", () => {
-      const popover = document.querySelector(`.${FAVORITE_POPOVER_CLASS}`);
-      const button = document.querySelector(`.${FAVORITE_ENTRY_CLASS}`);
-      if (popover && button && !popover.hidden) {
-        positionFavoritePopover(button, popover);
+      if (favoritePopoverResizeRaf) {
+        return;
       }
-    });
+      favoritePopoverResizeRaf = window.requestAnimationFrame(() => {
+        favoritePopoverResizeRaf = 0;
+        const popover = document.querySelector(`.${FAVORITE_POPOVER_CLASS}`);
+        const button = document.querySelector(`.${FAVORITE_ENTRY_CLASS}`);
+        if (popover && button && !popover.hidden) {
+          positionFavoritePopover(button, popover);
+        }
+      });
+    }, { passive: true });
   }
 
   function toggleFavoritePopover(button) {

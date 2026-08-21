@@ -71,19 +71,15 @@
         return NodeFilter.FILTER_ACCEPT;
       }
     });
-    let changed = false;
     const textNodes = [];
     while (walker.nextNode()) {
       textNodes.push(walker.currentNode);
     }
     textNodes.forEach((textNode) => {
-      if (highlightTextNode(textNode, pattern)) {
-        changed = true;
-      }
+      highlightTextNode(textNode, pattern);
     });
-    if (changed) {
-      element.dataset.betterHighlighted = "true";
-    }
+    // 无论是否命中都打标记，避免后续 mutation 重复扫描同一元素（重置走 resetKeywordHighlights）。
+    element.dataset.betterHighlighted = "true";
   }
 
   function scanKeywordHighlights() {
@@ -105,11 +101,50 @@
     });
   }
 
+  function scanKeywordHighlightTargets(targets) {
+    const pattern = getHighlightKeywordPattern();
+    if (!pattern || !targets.length) {
+      return;
+    }
+    targets.forEach((element) => {
+      applyKeywordHighlightToElement(element);
+    });
+  }
+
+  function collectAddedHighlightTargets(mutations) {
+    const targets = new Set();
+    mutations.forEach((mutation) => {
+      if (mutation.target instanceof Element && mutation.target.matches(HIGHLIGHT_TARGET_SELECTOR)) {
+        targets.add(mutation.target);
+      }
+      mutation.addedNodes.forEach((node) => {
+        if (!(node instanceof Element)) {
+          return;
+        }
+        if (node.matches(HIGHLIGHT_TARGET_SELECTOR)) {
+          targets.add(node);
+        }
+        if (node.querySelectorAll) {
+          node.querySelectorAll(HIGHLIGHT_TARGET_SELECTOR).forEach((element) => {
+            targets.add(element);
+          });
+        }
+      });
+    });
+    return [...targets];
+  }
+
   function applyKeywordHighlightsAndObserve() {
     scanKeywordHighlights();
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((mutations) => {
+      const targets = collectAddedHighlightTargets(mutations);
+      if (!targets.length) {
+        return;
+      }
       window.clearTimeout(highlightScanTimer);
-      highlightScanTimer = window.setTimeout(scanKeywordHighlights, 300);
+      highlightScanTimer = window.setTimeout(() => {
+        scanKeywordHighlightTargets(targets);
+      }, 300);
     });
     observer.observe(document.documentElement, {
       childList: true,

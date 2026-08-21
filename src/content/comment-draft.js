@@ -86,7 +86,24 @@
       }, 500);
     });
 
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((mutations) => {
+      // 只响应评论草稿表单自身或其容器的新增/移除/内容变化，忽略其余全站 DOM 变更。
+      const relevant = mutations.some((mutation) => {
+        const target = mutation.target instanceof Element
+          ? mutation.target
+          : mutation.target?.parentElement;
+        if (target?.closest(".better-comment-preview__reply-form")) {
+          return true;
+        }
+        return [...mutation.addedNodes, ...mutation.removedNodes].some((node) => (
+          node instanceof Element
+          && (node.matches(".better-comment-preview__reply-form")
+            || node.querySelector(".better-comment-preview__reply-form"))
+        ));
+      });
+      if (!relevant) {
+        return;
+      }
       window.clearTimeout(draftRestoreTimer);
       draftRestoreTimer = window.setTimeout(() => {
         document.querySelectorAll(".better-comment-preview__reply-form").forEach((form) => {

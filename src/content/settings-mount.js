@@ -142,6 +142,18 @@
         return;
       }
 
+      const historyClearButton = event.target.closest(".better-settings__history-clear");
+      if (historyClearButton && panel.contains(historyClearButton)) {
+        clearReadingHistory().then(() => refreshReadingHistoryList(panel));
+        return;
+      }
+
+      const historyRemoveButton = event.target.closest("[data-history-remove]");
+      if (historyRemoveButton && panel.contains(historyRemoveButton)) {
+        removeReadingHistoryItem(historyRemoveButton.dataset.historyRemove).then(() => refreshReadingHistoryList(panel));
+        return;
+      }
+
       const mentionNotifyToggleButton = event.target.closest(".better-settings__mention-notify-toggle");
       if (mentionNotifyToggleButton && panel.contains(mentionNotifyToggleButton)) {
         const nextEnabled = !mentionNotifySettings.enabled;
@@ -269,6 +281,12 @@
       const testButton = event.target.closest(".better-settings__ai-test");
       if (testButton && panel.contains(testButton)) {
         testAiSettingsFromPanel(panel, testButton);
+      }
+
+      const gotoModelsButton = event.target.closest(".better-settings__goto-models");
+      if (gotoModelsButton && panel.contains(gotoModelsButton)) {
+        setActiveSettingsTab(SETTINGS_TABS.MODELS);
+        return;
       }
 
       const fetchModelsButton = event.target.closest(".better-settings__ai-fetch-models");
@@ -415,8 +433,31 @@
         return;
       }
 
-      if (event.target.matches(".better-settings__ai-enabled, .better-settings__ai-allow-emoji, .better-settings__ai-auto-popup")) {
+      if (event.target.matches(".better-settings__ai-enabled, .better-settings__ai-allow-emoji, .better-settings__ai-auto-popup, .better-settings__post-brief-enabled, .better-settings__deal-card-enabled")) {
         saveAiSettingsFromPanel(panel);
+        return;
+      }
+
+      if (event.target.matches(".better-settings__history-search")) {
+        readingHistoryFilter = event.target.value || "";
+        refreshReadingHistoryList(panel);
+        return;
+      }
+
+      if (event.target.matches(".better-settings__semantic-block-enabled, .better-settings__semantic-block-posts")) {
+        const enabled = panel.querySelector(".better-settings__semantic-block-enabled")?.checked === true;
+        const posts = panel.querySelector(".better-settings__semantic-block-posts")?.checked === true;
+        saveLocalSettings({
+          [SEMANTIC_BLOCK_ENABLED_STORAGE_KEY]: enabled,
+          [SEMANTIC_BLOCK_POSTS_STORAGE_KEY]: posts
+        });
+        return;
+      }
+
+      if (event.target.matches(".better-settings__semantic-block-intents")) {
+        saveLocalSettings({
+          [SEMANTIC_BLOCK_INTENTS_STORAGE_KEY]: normalizeKeywordList(event.target.value)
+        });
         return;
       }
 
@@ -616,7 +657,16 @@
     }
 
     window.__betterXiaoheiheSettingsResizeBound = true;
-    window.addEventListener("resize", repositionSettingsPanelIfOpen);
+    let resizeRaf = 0;
+    window.addEventListener("resize", () => {
+      if (resizeRaf) {
+        return;
+      }
+      resizeRaf = window.requestAnimationFrame(() => {
+        resizeRaf = 0;
+        repositionSettingsPanelIfOpen();
+      });
+    }, { passive: true });
   }
 
   function toggleSettingsPanel(button) {
@@ -659,7 +709,7 @@
     button.setAttribute("aria-expanded", "true");
     renderSettingsPanel();
     positionSettingsPanel(panel, button);
-    panel.querySelector(activeSettingsTab === SETTINGS_TABS.AI ? ".better-settings__ai-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT ? ".better-settings__ai-bot-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS ? ".better-settings__ai-bot-refresh-logs" : (activeSettingsTab === SETTINGS_TABS.GENERAL ? ".better-settings__layout-total-range" : ".better-settings__input"))))?.focus();
+    panel.querySelector(activeSettingsTab === SETTINGS_TABS.FOOTPRINT ? ".better-settings__history-search" : (activeSettingsTab === SETTINGS_TABS.MODELS ? ".better-settings__ai-base-url" : (activeSettingsTab === SETTINGS_TABS.AI ? ".better-settings__ai-summary-prompt" : (activeSettingsTab === SETTINGS_TABS.AIBOT ? ".better-settings__ai-bot-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS ? ".better-settings__ai-bot-refresh-logs" : (activeSettingsTab === SETTINGS_TABS.GENERAL ? ".better-settings__layout-total-range" : ".better-settings__input"))))))?.focus();
     if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS || activeSettingsTab === SETTINGS_TABS.AISTATS) {
       startAiBotLogAutoRefresh();
     } else {

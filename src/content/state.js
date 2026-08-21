@@ -1,5 +1,16 @@
 // 页面状态、配置归一化、本地设置同步。
 // 本文件由原入口文件等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
+  // 注意：MAIN world 下页面可能重写 window.setTimeout/requestAnimationFrame（如 Sentry instrument
+  // 在启动早期不稳定），会导致启动链 timer 卡死、start() 阻塞、样式整页不注入。
+  // 因此启动关键路径统一走这里尽早缓存的原生 timer/rAF。
+  const nativeSetTimeout = window.setTimeout.bind(window);
+  const nativeClearTimeout = window.clearTimeout.bind(window);
+  const nativeRequestAnimationFrame = typeof window.requestAnimationFrame === "function"
+    ? window.requestAnimationFrame.bind(window)
+    : (cb) => nativeSetTimeout(() => cb(Date.now()), 16);
+  const nativeCancelAnimationFrame = typeof window.cancelAnimationFrame === "function"
+    ? window.cancelAnimationFrame.bind(window)
+    : (id) => nativeClearTimeout(id);
   const ENHANCED_PATH_PREFIXES = ["/app/bbs", "/app/topic/link", "/app/user/profile", "/app/user/favour", "/app/search"];
   const LINK_PATH_REGEXP = /^\/app\/bbs\/link\/(\d+)/;
   const RIGHT_CONTENT_SELECTOR = [
@@ -50,6 +61,8 @@
     FEED: "feed",
     COMMENT: "comment",
     GENERAL: "general",
+    MODELS: "models",
+    FOOTPRINT: "footprint",
     AI: "ai",
     AIBOT: "aibot",
     AIBOT_LOGS: "aibot-logs",
@@ -125,10 +138,43 @@
     "device_id"
   ];
 
-  const commentCache = new Map();
-  const emojiCache = new Map();
-  const userLevelCache = new Map();
-  const aiSummaryCache = new Map();
+  const LRU_CACHE_LIMIT = Symbol("lru-cache-limit");
+  const COMMENT_CACHE_LIMIT = 50;
+  const EMOJI_CACHE_LIMIT = 5000;
+  const USER_LEVEL_CACHE_LIMIT = 200;
+  const AI_SUMMARY_CACHE_LIMIT = 200;
+
+  function createLruCache(limit) {
+    const cache = new Map();
+    cache[LRU_CACHE_LIMIT] = limit;
+    return cache;
+  }
+
+  function lruCacheGet(cache, key) {
+    if (!cache.has(key)) {
+      return undefined;
+    }
+    const value = cache.get(key);
+    cache.delete(key);
+    cache.set(key, value);
+    return value;
+  }
+
+  function lruCacheSet(cache, key, value) {
+    if (cache.has(key)) {
+      cache.delete(key);
+    }
+    cache.set(key, value);
+    const limit = cache[LRU_CACHE_LIMIT];
+    while (limit && cache.size > limit) {
+      cache.delete(cache.keys().next().value);
+    }
+  }
+
+  const commentCache = createLruCache(COMMENT_CACHE_LIMIT);
+  const emojiCache = createLruCache(EMOJI_CACHE_LIMIT);
+  const userLevelCache = createLruCache(USER_LEVEL_CACHE_LIMIT);
+  const aiSummaryCache = createLruCache(AI_SUMMARY_CACHE_LIMIT);
   const aiSummaryChatSending = new Set();
   const blockedKeywordHitKeys = new Set();
   const linkPageCommentTimeCache = new WeakMap();
@@ -173,6 +219,8 @@
   let handlingPage = false;
   let savedScrollY = null;
   let linkPageFilterRefreshTimer = null;
+  let linkPageFilterRefreshRaf = 0;
+  let handlePageTimer = null;
   let previewObserver = null;
   let rowResizeObserver = null;
   let topMenuOutsideClickBound = false;
@@ -856,7 +904,7 @@
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
     return new Promise((resolve) => {
-      const timer = window.setTimeout(() => {
+      const timer = nativeSetTimeout(() => {
         window.removeEventListener(LOCAL_SETTINGS_RESPONSE_EVENT, handleResponse);
         resolve({
           ok: false,
@@ -871,7 +919,7 @@
           return;
         }
 
-        window.clearTimeout(timer);
+        nativeClearTimeout(timer);
         window.removeEventListener(LOCAL_SETTINGS_RESPONSE_EVENT, handleResponse);
         resolve(detail);
       }

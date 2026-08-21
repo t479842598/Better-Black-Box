@@ -85,7 +85,7 @@
     if (!normalized.linkId || !normalized.content) {
       return;
     }
-    aiSummaryCache.set(normalized.linkId, {
+    lruCacheSet(aiSummaryCache, normalized.linkId, {
       content: normalized.content,
       elapsedMs: null,
       payload: normalized.payload,

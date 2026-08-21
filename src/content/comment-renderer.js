@@ -22,7 +22,7 @@
       return;
     }
 
-    emojiCache.set(key, {
+    lruCacheSet(emojiCache, key, {
       img: emoji.img,
       code: emoji.code || emoji.name || key,
       token: emoji.token || normalizeEmojiToken(emoji.code || emoji.name || key),
@@ -102,7 +102,7 @@
         return escapeHtml(part);
       }
 
-      const emoji = emojiCache.get(matched[1]) || emojiCache.get(normalizeEmojiToken(matched[1]));
+      const emoji = lruCacheGet(emojiCache, matched[1]) || lruCacheGet(emojiCache, normalizeEmojiToken(matched[1]));
       return emoji ? renderEmojiImage(emoji) : escapeHtml(normalizeCommentText(part));
     }).join("");
   }
@@ -120,7 +120,7 @@
         }
 
         const normalizedToken = normalizeEmojiToken(matched[1]);
-        const emoji = emojiCache.get(matched[1]) || emojiCache.get(normalizedToken);
+        const emoji = lruCacheGet(emojiCache, matched[1]) || lruCacheGet(emojiCache, normalizedToken);
         return emoji ? renderEmojiImage(emoji) : token;
       }).join("");
     }).join("");
@@ -450,7 +450,7 @@
     const profileId = getUserProfileId(user || {});
     const normalizedLevel = normalizeUserLevel(getRawUserLevel(user || {}));
     if (profileId && normalizedLevel) {
-      userLevelCache.set(String(profileId), normalizedLevel);
+      lruCacheSet(userLevelCache, String(profileId), normalizedLevel);
     }
   }
 
@@ -466,7 +466,7 @@
     }
 
     const profileId = getUserProfileId(user || {});
-    return profileId ? userLevelCache.get(String(profileId)) || "" : "";
+    return profileId ? lruCacheGet(userLevelCache, String(profileId)) || "" : "";
   }
 
   function parseUserLevelValue(level) {

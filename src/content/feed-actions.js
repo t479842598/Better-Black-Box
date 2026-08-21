@@ -372,7 +372,7 @@
     if (item.closest(`.${ROW_CLASS}`)) {
       ensureFeedItemUserLevel(item);
       normalizeNativeFeedImageLayout(item);
-      ensureFeedItemFallbackImages(item, commentCache.get(getLinkIdFromItem(item))?.linkDetail);
+      ensureFeedItemFallbackImages(item, lruCacheGet(commentCache, getLinkIdFromItem(item))?.linkDetail);
       return;
     }
 
@@ -385,7 +385,7 @@
     ensureAiSummaryButton(item);
     ensureFeedItemReadLaterButton(item, linkId);
     ensureFeedItemUserLevel(item);
-    setFeedItemPublishTime(item, commentCache.get(linkId)?.linkCreateAt);
+    setFeedItemPublishTime(item, lruCacheGet(commentCache, linkId)?.linkCreateAt);
 
     const searchResultRow = item.parentElement?.classList.contains("search-result__link")
       ? item.parentElement
@@ -408,7 +408,7 @@
     normalizeNativeFeedImageLayout(item);
     observeRowHeight(row, item);
     observePreview(preview);
-    ensureFeedItemFallbackImages(item, commentCache.get(linkId)?.linkDetail);
+    ensureFeedItemFallbackImages(item, lruCacheGet(commentCache, linkId)?.linkDetail);
   }
 
   function enhanceFeed() {

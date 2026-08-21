@@ -28,18 +28,18 @@
   }
 
   function markFirstCommentPageFailed(linkId) {
-    const state = commentCache.get(linkId) || { commentGroups: [] };
+    const state = lruCacheGet(commentCache, linkId) || { commentGroups: [] };
     state.failed = true;
     state.loadingMore = false;
     state.loadMoreFailed = false;
     state.hasMore = false;
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     renderLinkedPreviews(linkId);
   }
 
   function retryFailedFirstCommentPage(linkId) {
     return retryFirstCommentPageWithIdentity(linkId).then((retryData) => {
-      const retryState = commentCache.get(linkId) || { commentGroups: [] };
+      const retryState = lruCacheGet(commentCache, linkId) || { commentGroups: [] };
       if (retryData?.status !== "ok") {
         markFirstCommentPageFailed(linkId);
         return;
@@ -53,7 +53,7 @@
 
   function fetchCommentPage(linkId, page) {
     fetchCommentPageData(linkId, page).then((data) => {
-      const state = commentCache.get(linkId) || { commentGroups: [] };
+      const state = lruCacheGet(commentCache, linkId) || { commentGroups: [] };
       if (data?.status !== "ok") {
         if (page === 1) {
           retryFailedFirstCommentPage(linkId);
@@ -64,7 +64,7 @@
         state.loadingMore = false;
         state.loadMoreFailed = page > 1;
         state.hasMore = false;
-        commentCache.set(linkId, state);
+        lruCacheSet(commentCache, linkId, state);
         renderLinkedPreviews(linkId);
         return;
       }
@@ -78,12 +78,12 @@
         return;
       }
 
-      const state = commentCache.get(linkId) || { commentGroups: [] };
+      const state = lruCacheGet(commentCache, linkId) || { commentGroups: [] };
       state.failed = page === 1;
       state.loadingMore = false;
       state.loadMoreFailed = page > 1;
       state.hasMore = false;
-      commentCache.set(linkId, state);
+      lruCacheSet(commentCache, linkId, state);
       renderLinkedPreviews(linkId);
     });
   }
@@ -94,7 +94,7 @@
   }
 
   function findCommentGroup(linkId, rootCommentId) {
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     const group = state?.commentGroups?.find((item) => {
       return String(getCommentId(item.root)) === String(rootCommentId);
     });
@@ -128,7 +128,7 @@
 
     group.repliesLoading = true;
     group.repliesFailed = false;
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     renderLinkedPreviews(linkId);
 
     Promise.all([
@@ -143,14 +143,14 @@
       nextGroup.repliesLoading = false;
       if (data?.status !== "ok") {
         nextGroup.repliesFailed = true;
-        commentCache.set(linkId, nextState);
+        lruCacheSet(commentCache, linkId, nextState);
         renderLinkedPreviews(linkId);
         return;
       }
 
       mergeReplyComments(nextGroup, normalizeSubComments(data, rootCommentId));
       nextGroup.repliesFailed = false;
-      commentCache.set(linkId, nextState);
+      lruCacheSet(commentCache, linkId, nextState);
       renderLinkedPreviews(linkId);
     }).catch(() => {
       const { state: nextState, group: nextGroup } = findCommentGroup(linkId, rootCommentId);
@@ -160,13 +160,13 @@
 
       nextGroup.repliesLoading = false;
       nextGroup.repliesFailed = true;
-      commentCache.set(linkId, nextState);
+      lruCacheSet(commentCache, linkId, nextState);
       renderLinkedPreviews(linkId);
     });
   }
 
   function renderLinkedPreviews(linkId) {
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     document.querySelectorAll(`.${PREVIEW_CLASS}`).forEach((node) => {
       if (node.dataset.linkId !== linkId) {
         return;
@@ -186,7 +186,7 @@
   function renderAllPreviews() {
     document.querySelectorAll(`.${PREVIEW_CLASS}`).forEach((node) => {
       const linkId = node.dataset.linkId || "";
-      const state = commentCache.get(linkId);
+      const state = lruCacheGet(commentCache, linkId);
       if (!state) {
         return;
       }
@@ -327,7 +327,7 @@
       return;
     }
 
-    const state = commentCache.get(linkId) || { commentGroups: [] };
+    const state = lruCacheGet(commentCache, linkId) || { commentGroups: [] };
     if (state.linkAwarded) {
       return;
     }
@@ -335,7 +335,7 @@
     linkAwardButton.dataset.loading = "1";
     linkAwardButton.classList.add("better-link-award--loading");
     state.linkAwarding = true;
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
 
     runAfterIdentityCookiesRestored(() => fetch(buildLinkAwardApiUrl(), {
       method: "POST",
@@ -349,7 +349,7 @@
         award_type: "1"
       }).toString()
     })).then((response) => response.json()).then((data) => {
-      const nextState = commentCache.get(linkId) || state;
+      const nextState = lruCacheGet(commentCache, linkId) || state;
       nextState.linkAwarding = false;
       if (data?.status === "ok") {
         nextState.linkAwarded = true;
@@ -368,11 +368,11 @@
           button.classList.remove("better-link-award--loading");
         });
       }
-      commentCache.set(linkId, nextState);
+      lruCacheSet(commentCache, linkId, nextState);
     }).catch(() => {
-      const nextState = commentCache.get(linkId) || state;
+      const nextState = lruCacheGet(commentCache, linkId) || state;
       nextState.linkAwarding = false;
-      commentCache.set(linkId, nextState);
+      lruCacheSet(commentCache, linkId, nextState);
       updateLinkAwardButtons(linkId, (button) => {
         delete button.dataset.loading;
         button.classList.remove("better-link-award--loading");
@@ -751,7 +751,7 @@
     }
 
     const linkId = getLinkIdFromItem(item);
-    const cachedImageUrls = commentCache.get(linkId)?.linkDetail?.feedImageUrls || [];
+    const cachedImageUrls = lruCacheGet(commentCache, linkId)?.linkDetail?.feedImageUrls || [];
     const imageUrls = cachedImageUrls.filter(isSafeCommentImageUrl);
     const viewerImageUrls = imageUrls.length
       ? imageUrls
@@ -764,7 +764,7 @@
   }
 
   function findCachedComment(linkId, commentId) {
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     if (!state?.commentGroups?.length || !commentId) {
       return { state, group: null, comment: null };
     }
@@ -806,7 +806,7 @@
       return;
     }
 
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     if (!state) {
       return;
     }
@@ -819,7 +819,7 @@
       rootCommentId: String(target.rootCommentId || target.commentId),
       username: target.username || getCommentUserName(comment)
     };
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     renderLinkedPreviews(linkId);
 
     window.requestAnimationFrame(() => {
@@ -831,13 +831,13 @@
 
   function closePreviewReplyForm(preview) {
     const linkId = preview.dataset.linkId || "";
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     if (!state?.activeReplyTarget) {
       return;
     }
 
     delete state.activeReplyTarget;
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     renderLinkedPreviews(linkId);
   }
 
@@ -892,7 +892,7 @@
   }
 
   function prependCreatedPostComment(linkId, data, text) {
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     if (!state) {
       return;
     }
@@ -913,7 +913,7 @@
     }
     delete state.activeReplyTarget;
     state.commentCount = String((Number.parseInt(state.commentCount, 10) || 0) + 1);
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     renderLinkedPreviews(linkId);
   }
 
@@ -933,7 +933,7 @@
     group.replyCount = Math.max(Number(group.replyCount) || 0, group.replies.length);
     delete state.activeReplyTarget;
     state.commentCount = String((Number.parseInt(state.commentCount, 10) || 0) + 1);
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     renderLinkedPreviews(linkId);
   }
 
@@ -965,7 +965,7 @@
 
   function getEmojiByShortcode(shortcode) {
     const token = String(shortcode || "").trim().replace(/^\[/, "").replace(/\]$/, "");
-    return emojiCache.get(token) || emojiCache.get(normalizeEmojiToken(token)) || null;
+    return lruCacheGet(emojiCache, token) || lruCacheGet(emojiCache, normalizeEmojiToken(token)) || null;
   }
 
   function recordEmojiUsage(shortcode) {
@@ -1760,13 +1760,13 @@
 
   function loadMorePreviewComments(preview) {
     const linkId = preview.dataset.linkId;
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     if (!linkId || !state || state.loadingMore || !state.hasMore) {
       return;
     }
 
     state.loadingMore = true;
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     renderLinkedPreviews(linkId);
     fetchCommentPage(linkId, (state.page || 1) + 1);
   }
@@ -1777,7 +1777,7 @@
       return;
     }
 
-    const previousState = commentCache.get(linkId);
+    const previousState = lruCacheGet(commentCache, linkId);
     const pending = {
       commentGroups: [],
       page: 0,
@@ -1785,7 +1785,7 @@
       loadingMore: true,
       linkDetail: previousState?.linkDetail
     };
-    commentCache.set(linkId, pending);
+    lruCacheSet(commentCache, linkId, pending);
     renderLinkedPreviews(linkId);
     fetchCommentPage(linkId, 1);
   }
@@ -1811,7 +1811,17 @@
       }
     };
 
-    list.addEventListener("scroll", loadMoreIfNearBottom);
+    // rAF 节流 + passive，避免滚动时每帧重复读取滚动位置强制布局。
+    let listScrollRaf = 0;
+    list.addEventListener("scroll", () => {
+      if (listScrollRaf) {
+        return;
+      }
+      listScrollRaf = window.requestAnimationFrame(() => {
+        listScrollRaf = 0;
+        loadMoreIfNearBottom();
+      });
+    }, { passive: true });
     window.requestAnimationFrame(loadMoreIfNearBottom);
   }
 
@@ -1821,7 +1831,7 @@
       return;
     }
 
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     const hasCommentLoadState = Boolean(
       state
       && (Number(state.page) > 0 || state.loadingMore || state.failed)

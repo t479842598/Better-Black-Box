@@ -179,12 +179,12 @@
       return;
     }
     const linkId = overlay.dataset.linkId;
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     if (!linkId || !state || state.loadingMore || !state.hasMore) {
       return;
     }
     state.loadingMore = true;
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     fetchCommentPage(linkId, (state.page || 1) + 1);
   }
 
@@ -193,8 +193,15 @@
     if (!body || overlay._scrollHandler) {
       return;
     }
+    let bodyScrollRaf = 0;
     const handler = () => {
-      loadMoreTopicPreviewCommentsIfNearBottom(overlay);
+      if (bodyScrollRaf) {
+        return;
+      }
+      bodyScrollRaf = window.requestAnimationFrame(() => {
+        bodyScrollRaf = 0;
+        loadMoreTopicPreviewCommentsIfNearBottom(overlay);
+      });
     };
     overlay._scrollHandler = handler;
     body.addEventListener("scroll", handler, { passive: true });
@@ -228,7 +235,7 @@
         // fetchCommentPageData 内部已缓存 linkDetail；评论组仅在弹窗打开前未加载过时写入，
         // 避免把 feed 侧已滚动加载的多页评论回退为第 1 页（onlyIfEmpty）。
         cacheCommentPageFromApiData(linkId, 1, data, { onlyIfEmpty: true });
-        const state = commentCache.get(linkId) || {};
+        const state = lruCacheGet(commentCache, linkId) || {};
         renderTopicPreviewDetail(overlay, state.linkDetail || {});
         if (preview) {
           preview.dataset.commentCount = String(state.commentCount || 0);
@@ -258,7 +265,7 @@
 
     const title = overlay.querySelector(".better-topic-preview__title")?.textContent?.trim() || "AI 总结";
     if (aiSummaryCache.has(linkId)) {
-      const cachedSummary = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
+      const cachedSummary = normalizeAiSummaryCacheEntry(lruCacheGet(aiSummaryCache, linkId));
       setAiButtonComplete(button, true);
       setAiSummaryModal(title, cachedSummary.content, false, linkId, cachedSummary.elapsedMs);
       return;
@@ -288,8 +295,8 @@
       .then(({ summary, payload }) => {
         const elapsedMs = performance.now() - summaryStartTime;
         const content = cleanAiSummaryContent(summary, aiSettings.allowEmoji) || "没有生成总结。";
-        aiSummaryCache.set(linkId, { content, elapsedMs, payload, chatMessages: [] });
-        persistAiSummaryHistory(linkId, aiSummaryCache.get(linkId), { title });
+        lruCacheSet(aiSummaryCache, linkId, { content, elapsedMs, payload, chatMessages: [] });
+        persistAiSummaryHistory(linkId, lruCacheGet(aiSummaryCache, linkId), { title });
         setAiButtonComplete(button, true);
         if (aiSettings.autoPopup) {
           setAiSummaryModal(title, content, false, linkId, elapsedMs);

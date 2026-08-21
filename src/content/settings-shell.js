@@ -1,5 +1,45 @@
 // 设置面板整体内容渲染。
 // 本文件由上一级模块继续等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
+  let semanticBlockUiState = {
+    enabled: false,
+    intents: SEMANTIC_BLOCK_DEFAULT_INTENTS.slice(),
+    posts: false,
+    totalBlocked: 0
+  };
+
+  function readSemanticBlockUiFromValues(values = {}) {
+    const rawEnabled = values[SEMANTIC_BLOCK_ENABLED_STORAGE_KEY];
+    const rawIntents = values[SEMANTIC_BLOCK_INTENTS_STORAGE_KEY];
+    const rawPosts = values[SEMANTIC_BLOCK_POSTS_STORAGE_KEY];
+    const intents = Array.isArray(rawIntents)
+      ? rawIntents.map((item) => String(item).trim()).filter(Boolean)
+      : String(rawIntents || "").split(/[\n,，;；]+/).map((item) => item.trim()).filter(Boolean);
+    return {
+      enabled: rawEnabled === true || rawEnabled === "true" || rawEnabled === "1",
+      intents: intents.length ? intents : SEMANTIC_BLOCK_DEFAULT_INTENTS.slice(),
+      posts: rawPosts === true || rawPosts === "true" || rawPosts === "1"
+    };
+  }
+
+  function loadSemanticBlockUiState() {
+    return requestLocalSettingsState().then((response) => {
+      if (response?.ok) {
+        semanticBlockUiState = {
+          ...readSemanticBlockUiFromValues(response.values || {}),
+          totalBlocked: getSemanticBlockStats().totalBlocked
+        };
+      }
+      return semanticBlockUiState;
+    });
+  }
+
+  function refreshSemanticBlockStats(panel) {
+    const stats = panel?.querySelector("[data-semantic-block-stats]");
+    if (stats) {
+      stats.textContent = String(getSemanticBlockStats().totalBlocked);
+    }
+  }
+
   function renderBlockedSettingsPanelContent() {
     const activeScope = normalizeBlockedKeywordScope(activeBlockedKeywordScope);
     const visibleBlockedKeywords = blockedKeywords.filter((item) => normalizeBlockedKeywordScope(item.scope) === activeScope);
@@ -51,6 +91,32 @@
           <button class="better-settings__add" type="submit">添加</button>
         </form>
         ${listHtml}
+      </div>
+      <div class="better-settings__section better-settings__semantic-block-section">
+        <div class="better-settings__section-title">AI 语义屏蔽</div>
+        <div class="better-settings__desc">用 AI 识别剧透、引战、软广等内容并自动折叠，弥补关键词屏蔽的不足。会消耗 AI 调用量，建议配合「AI 模型」页的内置 Gemini 本地模型使用。</div>
+        <div class="better-settings__level-row">
+          <span class="better-settings__section-title">启用语义屏蔽</span>
+          <label class="better-settings__ai-master-toggle" title="${semanticBlockUiState.enabled ? "关闭" : "开启"}AI 语义屏蔽">
+            <input class="better-settings__semantic-block-enabled" type="checkbox" aria-label="AI 语义屏蔽"${semanticBlockUiState.enabled ? " checked" : ""}>
+            <span class="better-settings__ai-master-control" aria-hidden="true">
+              <span class="better-settings__ai-status${semanticBlockUiState.enabled ? " is-on" : ""}">${semanticBlockUiState.enabled ? "已开启" : "未开启"}</span>
+              <span class="better-settings__ai-master-track">
+                <span class="better-settings__ai-master-thumb"></span>
+              </span>
+            </span>
+          </label>
+        </div>
+        <label class="better-settings__field">
+          <span class="better-settings__field-title">屏蔽意图（每行一个）</span>
+          <textarea class="better-settings__textarea better-settings__semantic-block-intents" placeholder="例如：剧透">${escapeHtml(semanticBlockUiState.intents.join("\n"))}</textarea>
+        </label>
+        <label class="better-settings__rule-toggle">
+          <input class="better-settings__semantic-block-posts" type="checkbox"${semanticBlockUiState.posts ? " checked" : ""}>
+          <span class="better-settings__rule-toggle-switch" aria-hidden="true"></span>
+          <span class="better-settings__rule-toggle-text">同时屏蔽帖子（默认只屏蔽评论）</span>
+        </label>
+        <div class="better-settings__desc">已累计屏蔽：<span data-semantic-block-stats>${escapeHtml(semanticBlockUiState.totalBlocked)}</span> 条</div>
       </div>
     `;
   }
@@ -125,7 +191,6 @@
         <div class="better-settings__desc">信息流标题和评论正文命中关键词时自动高亮；多个关键词可用逗号、空格或换行分隔。</div>
         <textarea class="better-settings__textarea better-settings__highlight-keywords" placeholder="例如：折扣 攻略 避雷">${escapeHtml(highlightKeywords.join("\n"))}</textarea>
       </div>
-      ${renderReadLaterSettingsContent()}
         </div>
       </details>
 
@@ -314,13 +379,19 @@
       </div>
       <div class="better-settings__tabs" role="tablist" aria-label="设置分类">
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.GENERAL}" aria-selected="${activeSettingsTab === SETTINGS_TABS.GENERAL ? "true" : "false"}">通用</button>
+        <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.FOOTPRINT}" aria-selected="${activeSettingsTab === SETTINGS_TABS.FOOTPRINT ? "true" : "false"}">足迹</button>
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.BLOCKED}" aria-selected="${activeSettingsTab === SETTINGS_TABS.BLOCKED ? "true" : "false"}">屏蔽</button>
+        <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.MODELS}" aria-selected="${activeSettingsTab === SETTINGS_TABS.MODELS ? "true" : "false"}">AI 模型</button>
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AI}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AI ? "true" : "false"}">AI 总结</button>
         ${AI_BOT_FEATURE_ENABLED ? `<button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AIBOT}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AIBOT ? "true" : "false"}">AI Bot</button>` : ""}
         ${AI_BOT_FEATURE_ENABLED ? `<button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AISTATS}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AISTATS ? "true" : "false"}">AI 统计</button>` : ""}
         ${AI_BOT_FEATURE_ENABLED ? `<button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AIBOT_LOGS}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS ? "true" : "false"}">运行日志</button>` : ""}
       </div>
-      ${activeSettingsTab === SETTINGS_TABS.AI
+      ${activeSettingsTab === SETTINGS_TABS.MODELS
+        ? renderAiModelsPanelContent()
+        : (activeSettingsTab === SETTINGS_TABS.FOOTPRINT
+        ? renderFootprintPanelContent()
+        : (activeSettingsTab === SETTINGS_TABS.AI
         ? renderAiSettingsPanelContent()
         : (activeSettingsTab === SETTINGS_TABS.GENERAL
           ? renderFeedLayoutSettingsPanelContent()
@@ -328,7 +399,7 @@
             ? renderAiBotSettingsPanelContent()
             : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS
               ? renderAiBotLogsPanelContent()
-              : (activeSettingsTab === SETTINGS_TABS.AISTATS ? renderAiBotStatsPanelContent() : renderBlockedSettingsPanelContent()))))}
+              : (activeSettingsTab === SETTINGS_TABS.AISTATS ? renderAiBotStatsPanelContent() : renderBlockedSettingsPanelContent()))))))}
     `;
     if (activeSettingsTab === SETTINGS_TABS.GENERAL) {
       bindFeedLayoutRangeInputs(panel);
@@ -348,9 +419,21 @@
       });
     }
     syncSettingsAutoHeightTextareas(panel);
-    if (activeSettingsTab === SETTINGS_TABS.AI) {
+    if (activeSettingsTab === SETTINGS_TABS.BLOCKED) {
+      loadSemanticBlockUiState().then(() => {
+        renderSettingsPanel();
+      });
+    }
+    if (activeSettingsTab === SETTINGS_TABS.FOOTPRINT) {
+      refreshReadingHistoryList(panel);
+      refreshReadLaterList(panel);
+    }
+    if (activeSettingsTab === SETTINGS_TABS.MODELS) {
       syncAiConnectionDot("ai", aiSettings);
       loadCachedAiModelOptions(panel);
+    }
+    if (activeSettingsTab === SETTINGS_TABS.AI) {
+      syncAiConnectionDot("ai", aiSettings);
     }
     if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
       refreshAiStatsHistoryLists(panel);
@@ -401,7 +484,7 @@
     const body = document.createElement("div");
     body.className = "better-settings__changelog-body";
     if (content) {
-      body.appendChild(renderMarkdownBlock(String(content).split("\n")));
+      body.innerHTML = renderMarkdownBlock(String(content).split("\n"));
     } else {
       body.textContent = "暂无更新内容说明";
     }

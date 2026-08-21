@@ -103,7 +103,7 @@
       return null;
     }
 
-    const state = commentCache.get(linkId) || { commentGroups: [] };
+    const state = lruCacheGet(commentCache, linkId) || { commentGroups: [] };
     const previousDetail = state.linkDetail || {};
     state.linkDetail = {
       ...previousDetail,
@@ -113,17 +113,17 @@
       feedImageUrls: detail.feedImageUrls.length ? detail.feedImageUrls : (previousDetail.feedImageUrls || []),
       feedThumbnailUrls: detail.feedThumbnailUrls.length ? detail.feedThumbnailUrls : (previousDetail.feedThumbnailUrls || [])
     };
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     updateFeedItemFallbackImages(linkId, state.linkDetail);
     return state.linkDetail;
   }
 
   function cacheCommentPageFromApiData(linkId, page, data, options = {}) {
     if (data?.status !== "ok") {
-      return commentCache.get(linkId);
+      return lruCacheGet(commentCache, linkId);
     }
 
-    const state = commentCache.get(linkId) || { commentGroups: [] };
+    const state = lruCacheGet(commentCache, linkId) || { commentGroups: [] };
     if (options.onlyIfEmpty && state.commentGroups?.length) {
       return state;
     }
@@ -141,7 +141,7 @@
     state.loadMoreFailed = false;
     state.loadingMore = false;
     state.hasMore = pageGroups.length >= COMMENT_PAGE_LIMIT;
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     return state;
   }
 

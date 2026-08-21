@@ -17,9 +17,18 @@
       baseUrl: normalizeBaseUrl(settings?.baseUrl, provider),
       model: String(settings?.model || "").trim(),
       apiKey: String(settings?.apiKey || ""),
+      temperature: Number.isFinite(settings?.temperature) ? settings.temperature : 0.2,
       allowEmoji: settings?.allowEmoji !== false,
       autoPopup: settings?.autoPopup !== false,
-      summaryPrompt: String(settings?.summaryPrompt || "").trim() || DEFAULT_SUMMARY_PROMPT
+      summaryPrompt: String(settings?.summaryPrompt || "").trim() || DEFAULT_SUMMARY_PROMPT,
+      postBrief: {
+        enabled: settings?.postBrief?.enabled !== false,
+        minLength: Math.max(200, Number(settings?.postBrief?.minLength) || 800)
+      },
+      dealCard: {
+        enabled: settings?.dealCard?.enabled !== false,
+        autoAnalyze: settings?.dealCard?.autoAnalyze !== false
+      }
     };
   }
 

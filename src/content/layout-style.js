@@ -5167,7 +5167,16 @@
       .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-panel-footer {
         display: flex;
         justify-content: flex-end;
+        align-items: center;
+        gap: 10px;
         margin-top: 8px;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-elapsed {
+        flex: 1 1 auto;
+        text-align: left;
+        font-size: 12px;
+        color: #8a9299;
       }
 
       .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-regenerate {
@@ -7117,6 +7126,237 @@
       .better-topic-preview .${PREVIEW_CLASS} .better-comment-preview__footer {
         flex: 0 0 auto;
       }
+
+    
+      /* ===== 恢复新增样式：AI 增强 / 足迹卡片等 ===== */
+.${SETTINGS_PANEL_CLASS} .better-settings__current-provider {
+      display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:8px;
+        padding:10px 12px;
+        margin-bottom:12px;
+        border-radius:8px;
+        background:rgba(120,134,156,0.08);
+        font-size:13px;
+        
+        }.$ {
+      SETTINGS_PANEL_CLASS
+        }.${SETTINGS_PANEL_CLASS} .better-settings__current-provider-text {
+      color:inherit;
+        word-break:break-all;
+        
+        }.better-post-brief-entry {
+      margin:4px 0 2px;
+        
+        }.better-post-brief-btn {
+      display:inline-flex;
+        align-items:center;
+        gap:4px;
+        padding:3px 10px;
+        margin:4px 0 2px;
+        border:1px solid rgba(80,140,255,0.45);
+        border-radius:999px;
+        background:rgba(80,140,255,0.08);
+        color:#4f7cf7;
+        font-size:12px;
+        line-height:1.5;
+        cursor:pointer;
+        transition:background-color 0.15s ease,border-color 0.15s ease;
+        
+        }.better-post-brief-btn:hover {
+      background:rgba(80,140,255,0.16);
+        border-color:rgba(80,140,255,0.7);
+        
+        }.better-post-brief-btn__icon {
+      font-size:13px;
+        
+        }.better-post-brief-entry.is-open .better-post-brief-btn {
+      border-color:rgba(80,140,255,0.7);
+        background:rgba(80,140,255,0.14);
+        
+        }.better-post-brief-bar {
+      margin:6px 0 10px;
+        padding:10px 12px;
+        border-radius:8px;
+        background:rgba(80,140,255,0.06);
+        border:1px solid rgba(80,140,255,0.18);
+        font-size:13px;
+        line-height:1.6;
+        color:inherit;
+        
+        }.better-post-brief__loading,.better-post-brief__error {
+      display:flex;
+        align-items:center;
+        gap:6px;
+        color:#8a94a6;
+        flex-wrap:wrap;
+        
+        }.better-post-brief__spinner,.better-deal-card__spinner {
+      width:12px;
+        height:12px;
+        border:2px solid rgba(80,140,255,0.25);
+        border-top-color:#4f7cf7;
+        border-radius:50%;
+        animation:better-spin 0.8s linear infinite;
+        flex:0 0 auto;
+        
+        }.better-post-brief__error {
+      color:#e5484d;
+        
+        }.better-post-brief__retry {
+      margin-left:8px;
+        padding:1px 10px;
+        border:1px solid rgba(80,140,255,0.5);
+        border-radius:999px;
+        background:rgba(80,140,255,0.1);
+        color:#4f7cf7;
+        font-size:12px;
+        cursor:pointer;
+        
+        }.better-post-brief__retry:hover {
+      background:rgba(80,140,255,0.18);
+        
+        }.better-post-brief__conclusion {
+      display:flex;
+        align-items:baseline;
+        gap:6px;
+        margin-bottom:6px;
+        
+        }.better-post-brief__conclusion-label {
+      flex:0 0 auto;
+        padding:0 6px;
+        border-radius:4px;
+        background:rgba(80,140,255,0.14);
+        color:#4f7cf7;
+        font-size:12px;
+        line-height:1.6;
+        
+        }.better-post-brief__conclusion-text {
+      font-weight:600;
+        
+        }.better-post-brief__points {
+      margin:0;
+        padding-left:18px;
+        
+        }.better-post-brief__points li {
+      margin:2px 0;
+        
+        }.better-deal-card {
+      margin:8px 0 10px;
+        padding:10px 12px;
+        border-radius:8px;
+        border:1px solid rgba(250,160,60,0.35);
+        background:rgba(250,160,60,0.08);
+        font-size:13px;
+        line-height:1.55;
+        color:inherit;
+        
+        }.better-deal-card__head {
+      display:flex;
+        align-items:center;
+        gap:6px;
+        margin-bottom:6px;
+        
+        }.better-deal-card__icon {
+      font-size:14px;
+        
+        }.better-deal-card__title {
+      font-weight:700;
+        color:#d97706;
+        
+        }.better-deal-card__loading,.better-deal-card__error {
+      display:flex;
+        align-items:center;
+        gap:6px;
+        color:#8a94a6;
+        flex-wrap:wrap;
+        
+        }.better-deal-card__error {
+      color:#e5484d;
+        
+        }.better-deal-card__retry,.better-deal-card__analyze {
+      margin-left:8px;
+        padding:1px 10px;
+        border:1px solid rgba(250,160,60,0.5);
+        border-radius:999px;
+        background:rgba(250,160,60,0.12);
+        color:#d97706;
+        font-size:12px;
+        cursor:pointer;
+        
+        }.better-deal-card__retry:hover,.better-deal-card__analyze:hover {
+      background:rgba(250,160,60,0.2);
+        
+        }.better-deal-card__item {
+      padding:8px 0;
+        border-bottom:1px dashed rgba(150,160,180,0.25);
+        
+        }.better-deal-card__item:last-child {
+      border-bottom:none;
+        padding-bottom:2px;
+        
+        }.better-deal-card__item-head {
+      display:flex;
+        align-items:center;
+        gap:8px;
+        flex-wrap:wrap;
+        
+        }.better-deal-card__item-game {
+      font-weight:600;
+        
+        }.better-deal-card__item-platform {
+      padding:0 6px;
+        border-radius:4px;
+        background:rgba(120,134,156,0.12);
+        font-size:12px;
+        
+        }.better-deal-card__item-discount {
+      padding:0 6px;
+        border-radius:4px;
+        background:rgba(229,72,77,0.12);
+        color:#e5484d;
+        font-size:12px;
+        
+        }.better-deal-card__history {
+      padding:0 6px;
+        border-radius:4px;
+        background:rgba(80,140,255,0.1);
+        color:#4f7cf7;
+        font-size:12px;
+        
+        }.better-deal-card__item-body {
+      display:flex;
+        align-items:baseline;
+        gap:8px;
+        margin-top:2px;
+        
+        }.better-deal-card__item-price {
+      font-weight:700;
+        color:#d97706;
+        
+        }.better-deal-card__item-original {
+      text-decoration:line-through;
+        color:#8a94a6;
+        font-size:12px;
+        
+        }.better-deal-card__item-verdict {
+      margin-top:2px;
+        color:#8a94a6;
+        font-size:12px;
+        
+        }.better-deal-card__summary {
+      color:#8a94a6;
+        
+        }.better-deal-card__empty {
+      color:#8a94a6;
+        
+        }@keyframes better-spin {
+      to {
+        transform:rotate(360deg);
+          
+          }
+        }
 
     `;
     document.documentElement.appendChild(style);

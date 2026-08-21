@@ -19,6 +19,8 @@
     const standaloneTabs = [
       SETTINGS_TABS.BLOCKED,
       SETTINGS_TABS.GENERAL,
+      SETTINGS_TABS.MODELS,
+      SETTINGS_TABS.FOOTPRINT,
       SETTINGS_TABS.AI,
       ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AISTATS, SETTINGS_TABS.AIBOT_LOGS] : [])
     ];
@@ -141,7 +143,13 @@
       apiKey: panel.querySelector(".better-settings__ai-api-key")?.value ?? aiSettings.apiKey,
       allowEmoji: panel.querySelector(".better-settings__ai-allow-emoji")?.checked ?? aiSettings.allowEmoji,
       autoPopup: panel.querySelector(".better-settings__ai-auto-popup")?.checked ?? aiSettings.autoPopup,
-      summaryPrompt: panel.querySelector(".better-settings__ai-summary-prompt")?.value ?? aiSettings.summaryPrompt
+      summaryPrompt: panel.querySelector(".better-settings__ai-summary-prompt")?.value ?? aiSettings.summaryPrompt,
+      postBrief: {
+        enabled: panel.querySelector(".better-settings__post-brief-enabled")?.checked ?? (aiSettings.postBrief?.enabled !== false)
+      },
+      dealCard: {
+        enabled: panel.querySelector(".better-settings__deal-card-enabled")?.checked ?? (aiSettings.dealCard?.enabled !== false)
+      }
     });
   }
 
@@ -251,6 +259,16 @@
 
   function syncSettingsAutoHeightTextareas(panel) {
     panel?.querySelectorAll(".better-settings__textarea").forEach(syncAutoHeightTextarea);
+  }
+
+  function getAiProviderLabel(provider) {
+    const labels = {
+      [AI_PROVIDERS.OPENAI_COMPATIBLE]: "OpenAI Compatible",
+      [AI_PROVIDERS.OPENAI_RESPONSES]: "OpenAI Responses",
+      [AI_PROVIDERS.ANTHROPIC]: "Anthropic",
+      [AI_PROVIDERS.GEMINI]: "Gemini"
+    };
+    return labels[provider] || provider || "未配置";
   }
 
   function renderAiProviderOptions() {

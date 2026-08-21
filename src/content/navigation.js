@@ -28,12 +28,13 @@
     removeRightContent();
     if (isLinkPage()) {
       addFilterToBbsLink();
+      recordCurrentPageToHistory();
     } else {
       enhanceFeed();
       if (wasLinkPage && savedScrollY !== null) {
         const targetY = savedScrollY;
         savedScrollY = null;
-        window.requestAnimationFrame(() => {
+        nativeRequestAnimationFrame(() => {
           window.scrollTo(0, targetY);
         });
       }
@@ -47,17 +48,23 @@
     }
 
     scheduled = true;
-    window.requestAnimationFrame(() => {
-      scheduled = false;
-      handlingPage = true;
-      handlePage();
-      handlingPage = false;
-    });
+    if (handlePageTimer) {
+      nativeClearTimeout(handlePageTimer);
+    }
+    handlePageTimer = nativeSetTimeout(() => {
+      handlePageTimer = null;
+      nativeRequestAnimationFrame(() => {
+        scheduled = false;
+        handlingPage = true;
+        handlePage();
+        handlingPage = false;
+      });
+    }, 200);
   }
 
   function scheduleHandlePageAfterRoute() {
-    window.setTimeout(scheduleHandlePage, 0);
-    window.setTimeout(scheduleHandlePage, 120);
+    nativeSetTimeout(scheduleHandlePage, 0);
+    nativeSetTimeout(scheduleHandlePage, 120);
   }
 
   function scheduleLinkPageFilterRefresh() {
@@ -66,18 +73,41 @@
     }
 
     if (linkPageFilterRefreshTimer) {
-      window.clearTimeout(linkPageFilterRefreshTimer);
+      nativeClearTimeout(linkPageFilterRefreshTimer);
     }
-    window.requestAnimationFrame(updateLinkPageFilterControls);
-    linkPageFilterRefreshTimer = window.setTimeout(() => {
+    if (!linkPageFilterRefreshRaf) {
+      linkPageFilterRefreshRaf = nativeRequestAnimationFrame(() => {
+        linkPageFilterRefreshRaf = 0;
+        updateLinkPageFilterControls();
+      });
+    }
+    linkPageFilterRefreshTimer = nativeSetTimeout(() => {
       linkPageFilterRefreshTimer = null;
       ensureLinkPageFilterControls();
       updateLinkPageFilterControls();
     }, 160);
   }
 
+  // 扩展自身插入的 DOM：所有容器统一使用 better- 类前缀或 data-better-* 属性标记。
+  // 观察器据此排除自触发，避免扩展改动 DOM 引发整页重增强。
+  const EXTENSION_OWNED_SELECTOR = "[class*='better-'], [data-better-]";
+
+  function isExtensionOwnedElement(node) {
+    return Boolean(node
+      && typeof node.matches === "function"
+      && (node.matches(EXTENSION_OWNED_SELECTOR)
+        || (typeof node.closest === "function" && node.closest(EXTENSION_OWNED_SELECTOR))));
+  }
+
+  function mutationNodesAreExtensionOwned(mutation) {
+    const changedNodes = [...mutation.addedNodes, ...mutation.removedNodes];
+    return changedNodes.length > 0
+      && changedNodes.every((node) => !(node instanceof Element) || isExtensionOwnedElement(node));
+  }
+
   function mutationNodeMatches(node, selector) {
     return node?.nodeType === Node.ELEMENT_NODE
+      && !isExtensionOwnedElement(node)
       && (node.matches(selector) || Boolean(node.querySelector(selector)));
   }
 
@@ -85,6 +115,9 @@
     const target = mutation.target?.nodeType === Node.ELEMENT_NODE
       ? mutation.target
       : mutation.target?.parentElement;
+    if (isExtensionOwnedElement(target)) {
+      return false;
+    }
     return mutationNodeMatches(target, selector);
   }
 
@@ -104,6 +137,9 @@
     ].join(', ');
 
     return mutations.some((mutation) => {
+      if (mutationNodesAreExtensionOwned(mutation)) {
+        return false;
+      }
       if (
         mutationTargetMatches(mutation, commentStructureSelector)
         || mutationTargetMatches(mutation, setupStructureSelector)
@@ -120,17 +156,19 @@
   }
 
   function shouldRefreshHomePageForMutations(mutations) {
-    const homeStructureSelector = [
-      FEED_ITEM_SELECTOR,
-      `.${ROW_CLASS}`,
-      ".hb-bbs-home",
-      ".bbs-home__content-list",
-      ".bbs-home__content-item"
-    ].join(", ");
-
+    // 只看“信息流帖子”特征（FEED_ITEM_SELECTOR）。
+    // 注意：不能再用 isExtensionOwnedElement 排除——帖子被移入 .better-xiaoheihe-feed-row 后
+    // closest('[class*="better-"]') 会把它误判为扩展自有，导致信息流懒加载的新帖子不触发增强，
+    // 评论预览栏时有时无。enhanceFeedItem 本身有幂等守卫（item.closest(ROW_CLASS)），重复触发无害。
     return mutations.some((mutation) => {
+      if (mutation.type !== "childList") {
+        return false;
+      }
       const changedNodes = [...mutation.addedNodes, ...mutation.removedNodes];
-      return changedNodes.some((node) => mutationNodeMatches(node, homeStructureSelector));
+      return changedNodes.some((node) => (
+        node instanceof Element
+        && (node.matches(FEED_ITEM_SELECTOR) || node.querySelector(FEED_ITEM_SELECTOR))
+      ));
     });
   }
 
@@ -440,7 +478,7 @@
       }
 
       if (!replyEmojiScrollRaf) {
-        replyEmojiScrollRaf = window.requestAnimationFrame(handleReplyEmojiScroll);
+        replyEmojiScrollRaf = nativeRequestAnimationFrame(handleReplyEmojiScroll);
       }
     }, true);
   }
@@ -507,9 +545,15 @@
     bindTopicBlockContextMenu();
     bindReplyEmojiOutsideClick();
     installLocalSettingsStateSync();
-    await loadLocalSettingsState();
-    installAiSettingsSync();
+    // 立刻注样式先跑：不等 storage。（此前若 storage 链响应慢/超时,start() 会被
+    // await loadLocalSettingsState 卡住,导致样式全延时 6s+ 甚至永久不注入——即“样式全没”。)
     scheduleHandlePage();
+    loadLocalSettingsState().then(() => {
+      scheduleHandlePage();
+    }).catch(() => {
+      scheduleHandlePage();
+    });
+    installAiSettingsSync();
     observePage();
     installRouteHooks();
   }

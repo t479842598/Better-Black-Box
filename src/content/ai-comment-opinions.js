@@ -120,7 +120,7 @@
     contentEl.className = "better-comment-preview__opinions-content";
     if (content) {
       const lines = String(content).split("\n");
-      contentEl.appendChild(renderMarkdownBlock(lines));
+      contentEl.innerHTML = renderMarkdownBlock(lines);
     } else {
       contentEl.textContent = "准备中...";
     }

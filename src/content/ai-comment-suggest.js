@@ -146,7 +146,7 @@
     }
   }
 
-  function renderAiSuggestPanel(form, suggestions, errorMessage) {
+  function renderAiSuggestPanel(form, suggestions, errorMessage, elapsedMs = null) {
     closeAiSuggestPanel(form);
     const state = getAiSuggestFormState(form);
     const panel = document.createElement("div");
@@ -195,6 +195,12 @@
 
     const footer = document.createElement("div");
     footer.className = "better-comment-preview__ai-suggest-panel-footer";
+    if (Number.isFinite(elapsedMs) && elapsedMs >= 0) {
+      const elapsed = document.createElement("span");
+      elapsed.className = "better-comment-preview__ai-suggest-elapsed";
+      elapsed.textContent = `生成耗时 ${(elapsedMs / 1000).toFixed(1)} 秒`;
+      footer.appendChild(elapsed);
+    }
     const regenerateButton = document.createElement("button");
     regenerateButton.className = "better-comment-preview__ai-suggest-regenerate";
     regenerateButton.type = "button";
@@ -227,14 +233,16 @@
     }
     state.loading = true;
     setAiSuggestButtonLoading(form, true);
+    const suggestStartTime = performance.now();
     try {
       const messages = await collectAiSuggestContext({ linkId, commentId });
       const content = await requestAiChat(messages, 0.7);
+      const elapsedMs = performance.now() - suggestStartTime;
       const suggestions = splitAiSuggestions(content);
       if (!suggestions.length) {
         throw new Error("AI 未生成有效的回复建议");
       }
-      renderAiSuggestPanel(form, suggestions, "");
+      renderAiSuggestPanel(form, suggestions, "", elapsedMs);
     } catch (error) {
       renderAiSuggestPanel(form, [], error?.message || "AI 建议生成失败");
       if (!regenerate) {

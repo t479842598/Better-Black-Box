@@ -27,16 +27,21 @@
   const UI_STATE_STORAGE_KEY = "better-xiaoheihe-ui-state";
   const COMMENT_EMOJI_USAGE_STORAGE_KEY = "better-xiaoheihe-comment-emoji-usage";
   // 版本信息：发布时与 manifest.json 的 version 同步更新，用于设置面板顶部展示“已更新”提示。
-  const EXTENSION_VERSION = "1.8.0";
-  const EXTENSION_BUILD_DATE = "2026-08-18";
+  const EXTENSION_VERSION = "1.9.0";
+  const EXTENSION_BUILD_DATE = "2026-08-21";
   // 当前版本更新内容（设置面板点击版本号弹窗直接展示此内置文案；发布时同步更新）。
   const CURRENT_VERSION_CHANGELOG = [
-    "### v1.8.0",
+    "### v1.9.0",
     "",
-    "- 移除：评论预览“只看楼主”开关与详情页“只看楼主”按钮，修复“看楼主”文字与开关圆点重叠问题。",
-    "- 恢复：评论预览工具栏三段式排序（默认 / 最新 / 作者优先）、📊 观点总结与屏蔽 CY 开关。",
-    "- 优化：设置面板点击版本号直接显示本版本更新内容，不再依赖 GitHub 在线拉取。",
-    "- 保留：主评论楼层号 #N 显示。"
+    "- 新增：「AI 模型」设置页——自定义服务商管理，支持拉取模型列表、测试连通。",
+    "- 新增：长帖 AI 导读——超长帖子标题旁一键生成「结论+3 要点」。",
+    "- 新增：促销帖省钱助手——自动解析限免/折扣帖为卡片，并记录史低价格对比。",
+    "- 新增：AI 语义屏蔽——用 AI 识别剧透/引战/软广并自动折叠（屏蔽页手动开启）。",
+    "- 新增：我的足迹——自动记录浏览过的帖子，聚合浏览历史与稍后读。",
+    "- 新增：AI 建议回复显示生成耗时。",
+    "- 修复：评论预览栏时有时无、观点总结报错、版本号显示不同步。",
+    "- 性能：构建产物压缩减半、Observer 局部化、内存缓存 LRU。",
+    "- 移除：内置 Gemini 本地模型（占用内存过大）。"
   ].join("\n");
   const FEED_LAYOUT_SETTINGS_STORAGE_KEY = "better-xiaoheihe-feed-layout-settings";
   const HOT_SEARCH_DISABLED_STORAGE_KEY = "better-xiaoheihe-hot-search-disabled";
@@ -47,6 +52,10 @@
   const HIGHLIGHT_KEYWORDS_STORAGE_KEY = "better-xiaoheihe-highlight-keywords";
   const COMMENT_DRAFT_STORAGE_KEY = "better-xiaoheihe-comment-drafts";
   const READ_LATER_STORAGE_KEY = "better-xiaoheihe-read-later";
+  const READING_HISTORY_STORAGE_KEY = "better-xiaoheihe-reading-history";
+  const SEMANTIC_BLOCK_ENABLED_STORAGE_KEY = "better-xiaoheihe-semantic-block-enabled";
+  const SEMANTIC_BLOCK_INTENTS_STORAGE_KEY = "better-xiaoheihe-semantic-block-intents";
+  const SEMANTIC_BLOCK_POSTS_STORAGE_KEY = "better-xiaoheihe-semantic-block-posts";
   const AI_SUMMARY_HISTORY_STORAGE_KEY = "better-xiaoheihe-ai-summary-history";
   const AI_SUMMARY_ASK_PENDING_STORAGE_KEY = "better-xiaoheihe-ai-summary-ask-pending";
 
@@ -70,6 +79,10 @@
     HIGHLIGHT_KEYWORDS_STORAGE_KEY,
     COMMENT_DRAFT_STORAGE_KEY,
     READ_LATER_STORAGE_KEY,
+    READING_HISTORY_STORAGE_KEY,
+    SEMANTIC_BLOCK_ENABLED_STORAGE_KEY,
+    SEMANTIC_BLOCK_INTENTS_STORAGE_KEY,
+    SEMANTIC_BLOCK_POSTS_STORAGE_KEY,
     MENTION_NOTIFY_STORAGE_KEY,
     AI_SUMMARY_HISTORY_STORAGE_KEY,
     AI_SUMMARY_ASK_PENDING_STORAGE_KEY
@@ -166,9 +179,18 @@
       baseUrl: normalizeBaseUrl(settings?.baseUrl, provider),
       model: String(settings?.model || "").trim(),
       apiKey: String(settings?.apiKey || ""),
+      temperature: Number.isFinite(settings?.temperature) ? settings.temperature : 0.2,
       allowEmoji: settings?.allowEmoji !== false,
       autoPopup: settings?.autoPopup !== false,
-      summaryPrompt: String(settings?.summaryPrompt || "").trim() || DEFAULT_SUMMARY_PROMPT
+      summaryPrompt: String(settings?.summaryPrompt || "").trim() || DEFAULT_SUMMARY_PROMPT,
+      postBrief: {
+        enabled: settings?.postBrief?.enabled !== false,
+        minLength: Math.max(200, Number(settings?.postBrief?.minLength) || 800)
+      },
+      dealCard: {
+        enabled: settings?.dealCard?.enabled !== false,
+        autoAnalyze: settings?.dealCard?.autoAnalyze !== false
+      }
     };
   }
 
@@ -262,6 +284,17 @@
   // BEGIN src\content\state.js
 // 页面状态、配置归一化、本地设置同步。
 // 本文件由原入口文件等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
+  // 注意：MAIN world 下页面可能重写 window.setTimeout/requestAnimationFrame（如 Sentry instrument
+  // 在启动早期不稳定），会导致启动链 timer 卡死、start() 阻塞、样式整页不注入。
+  // 因此启动关键路径统一走这里尽早缓存的原生 timer/rAF。
+  const nativeSetTimeout = window.setTimeout.bind(window);
+  const nativeClearTimeout = window.clearTimeout.bind(window);
+  const nativeRequestAnimationFrame = typeof window.requestAnimationFrame === "function"
+    ? window.requestAnimationFrame.bind(window)
+    : (cb) => nativeSetTimeout(() => cb(Date.now()), 16);
+  const nativeCancelAnimationFrame = typeof window.cancelAnimationFrame === "function"
+    ? window.cancelAnimationFrame.bind(window)
+    : (id) => nativeClearTimeout(id);
   const ENHANCED_PATH_PREFIXES = ["/app/bbs", "/app/topic/link", "/app/user/profile", "/app/user/favour", "/app/search"];
   const LINK_PATH_REGEXP = /^\/app\/bbs\/link\/(\d+)/;
   const RIGHT_CONTENT_SELECTOR = [
@@ -312,6 +345,8 @@
     FEED: "feed",
     COMMENT: "comment",
     GENERAL: "general",
+    MODELS: "models",
+    FOOTPRINT: "footprint",
     AI: "ai",
     AIBOT: "aibot",
     AIBOT_LOGS: "aibot-logs",
@@ -387,10 +422,43 @@
     "device_id"
   ];
 
-  const commentCache = new Map();
-  const emojiCache = new Map();
-  const userLevelCache = new Map();
-  const aiSummaryCache = new Map();
+  const LRU_CACHE_LIMIT = Symbol("lru-cache-limit");
+  const COMMENT_CACHE_LIMIT = 50;
+  const EMOJI_CACHE_LIMIT = 5000;
+  const USER_LEVEL_CACHE_LIMIT = 200;
+  const AI_SUMMARY_CACHE_LIMIT = 200;
+
+  function createLruCache(limit) {
+    const cache = new Map();
+    cache[LRU_CACHE_LIMIT] = limit;
+    return cache;
+  }
+
+  function lruCacheGet(cache, key) {
+    if (!cache.has(key)) {
+      return undefined;
+    }
+    const value = cache.get(key);
+    cache.delete(key);
+    cache.set(key, value);
+    return value;
+  }
+
+  function lruCacheSet(cache, key, value) {
+    if (cache.has(key)) {
+      cache.delete(key);
+    }
+    cache.set(key, value);
+    const limit = cache[LRU_CACHE_LIMIT];
+    while (limit && cache.size > limit) {
+      cache.delete(cache.keys().next().value);
+    }
+  }
+
+  const commentCache = createLruCache(COMMENT_CACHE_LIMIT);
+  const emojiCache = createLruCache(EMOJI_CACHE_LIMIT);
+  const userLevelCache = createLruCache(USER_LEVEL_CACHE_LIMIT);
+  const aiSummaryCache = createLruCache(AI_SUMMARY_CACHE_LIMIT);
   const aiSummaryChatSending = new Set();
   const blockedKeywordHitKeys = new Set();
   const linkPageCommentTimeCache = new WeakMap();
@@ -435,6 +503,8 @@
   let handlingPage = false;
   let savedScrollY = null;
   let linkPageFilterRefreshTimer = null;
+  let linkPageFilterRefreshRaf = 0;
+  let handlePageTimer = null;
   let previewObserver = null;
   let rowResizeObserver = null;
   let topMenuOutsideClickBound = false;
@@ -1118,7 +1188,7 @@
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
     return new Promise((resolve) => {
-      const timer = window.setTimeout(() => {
+      const timer = nativeSetTimeout(() => {
         window.removeEventListener(LOCAL_SETTINGS_RESPONSE_EVENT, handleResponse);
         resolve({
           ok: false,
@@ -1133,7 +1203,7 @@
           return;
         }
 
-        window.clearTimeout(timer);
+        nativeClearTimeout(timer);
         window.removeEventListener(LOCAL_SETTINGS_RESPONSE_EVENT, handleResponse);
         resolve(detail);
       }
@@ -6435,7 +6505,16 @@
       .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-panel-footer {
         display: flex;
         justify-content: flex-end;
+        align-items: center;
+        gap: 10px;
         margin-top: 8px;
+      }
+
+      .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-elapsed {
+        flex: 1 1 auto;
+        text-align: left;
+        font-size: 12px;
+        color: #8a9299;
       }
 
       .${HOME_LAYOUT_CLASS} .better-comment-preview__ai-suggest-regenerate {
@@ -8386,6 +8465,237 @@
         flex: 0 0 auto;
       }
 
+    
+      /* ===== 恢复新增样式：AI 增强 / 足迹卡片等 ===== */
+.${SETTINGS_PANEL_CLASS} .better-settings__current-provider {
+      display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:8px;
+        padding:10px 12px;
+        margin-bottom:12px;
+        border-radius:8px;
+        background:rgba(120,134,156,0.08);
+        font-size:13px;
+        
+        }.$ {
+      SETTINGS_PANEL_CLASS
+        }.${SETTINGS_PANEL_CLASS} .better-settings__current-provider-text {
+      color:inherit;
+        word-break:break-all;
+        
+        }.better-post-brief-entry {
+      margin:4px 0 2px;
+        
+        }.better-post-brief-btn {
+      display:inline-flex;
+        align-items:center;
+        gap:4px;
+        padding:3px 10px;
+        margin:4px 0 2px;
+        border:1px solid rgba(80,140,255,0.45);
+        border-radius:999px;
+        background:rgba(80,140,255,0.08);
+        color:#4f7cf7;
+        font-size:12px;
+        line-height:1.5;
+        cursor:pointer;
+        transition:background-color 0.15s ease,border-color 0.15s ease;
+        
+        }.better-post-brief-btn:hover {
+      background:rgba(80,140,255,0.16);
+        border-color:rgba(80,140,255,0.7);
+        
+        }.better-post-brief-btn__icon {
+      font-size:13px;
+        
+        }.better-post-brief-entry.is-open .better-post-brief-btn {
+      border-color:rgba(80,140,255,0.7);
+        background:rgba(80,140,255,0.14);
+        
+        }.better-post-brief-bar {
+      margin:6px 0 10px;
+        padding:10px 12px;
+        border-radius:8px;
+        background:rgba(80,140,255,0.06);
+        border:1px solid rgba(80,140,255,0.18);
+        font-size:13px;
+        line-height:1.6;
+        color:inherit;
+        
+        }.better-post-brief__loading,.better-post-brief__error {
+      display:flex;
+        align-items:center;
+        gap:6px;
+        color:#8a94a6;
+        flex-wrap:wrap;
+        
+        }.better-post-brief__spinner,.better-deal-card__spinner {
+      width:12px;
+        height:12px;
+        border:2px solid rgba(80,140,255,0.25);
+        border-top-color:#4f7cf7;
+        border-radius:50%;
+        animation:better-spin 0.8s linear infinite;
+        flex:0 0 auto;
+        
+        }.better-post-brief__error {
+      color:#e5484d;
+        
+        }.better-post-brief__retry {
+      margin-left:8px;
+        padding:1px 10px;
+        border:1px solid rgba(80,140,255,0.5);
+        border-radius:999px;
+        background:rgba(80,140,255,0.1);
+        color:#4f7cf7;
+        font-size:12px;
+        cursor:pointer;
+        
+        }.better-post-brief__retry:hover {
+      background:rgba(80,140,255,0.18);
+        
+        }.better-post-brief__conclusion {
+      display:flex;
+        align-items:baseline;
+        gap:6px;
+        margin-bottom:6px;
+        
+        }.better-post-brief__conclusion-label {
+      flex:0 0 auto;
+        padding:0 6px;
+        border-radius:4px;
+        background:rgba(80,140,255,0.14);
+        color:#4f7cf7;
+        font-size:12px;
+        line-height:1.6;
+        
+        }.better-post-brief__conclusion-text {
+      font-weight:600;
+        
+        }.better-post-brief__points {
+      margin:0;
+        padding-left:18px;
+        
+        }.better-post-brief__points li {
+      margin:2px 0;
+        
+        }.better-deal-card {
+      margin:8px 0 10px;
+        padding:10px 12px;
+        border-radius:8px;
+        border:1px solid rgba(250,160,60,0.35);
+        background:rgba(250,160,60,0.08);
+        font-size:13px;
+        line-height:1.55;
+        color:inherit;
+        
+        }.better-deal-card__head {
+      display:flex;
+        align-items:center;
+        gap:6px;
+        margin-bottom:6px;
+        
+        }.better-deal-card__icon {
+      font-size:14px;
+        
+        }.better-deal-card__title {
+      font-weight:700;
+        color:#d97706;
+        
+        }.better-deal-card__loading,.better-deal-card__error {
+      display:flex;
+        align-items:center;
+        gap:6px;
+        color:#8a94a6;
+        flex-wrap:wrap;
+        
+        }.better-deal-card__error {
+      color:#e5484d;
+        
+        }.better-deal-card__retry,.better-deal-card__analyze {
+      margin-left:8px;
+        padding:1px 10px;
+        border:1px solid rgba(250,160,60,0.5);
+        border-radius:999px;
+        background:rgba(250,160,60,0.12);
+        color:#d97706;
+        font-size:12px;
+        cursor:pointer;
+        
+        }.better-deal-card__retry:hover,.better-deal-card__analyze:hover {
+      background:rgba(250,160,60,0.2);
+        
+        }.better-deal-card__item {
+      padding:8px 0;
+        border-bottom:1px dashed rgba(150,160,180,0.25);
+        
+        }.better-deal-card__item:last-child {
+      border-bottom:none;
+        padding-bottom:2px;
+        
+        }.better-deal-card__item-head {
+      display:flex;
+        align-items:center;
+        gap:8px;
+        flex-wrap:wrap;
+        
+        }.better-deal-card__item-game {
+      font-weight:600;
+        
+        }.better-deal-card__item-platform {
+      padding:0 6px;
+        border-radius:4px;
+        background:rgba(120,134,156,0.12);
+        font-size:12px;
+        
+        }.better-deal-card__item-discount {
+      padding:0 6px;
+        border-radius:4px;
+        background:rgba(229,72,77,0.12);
+        color:#e5484d;
+        font-size:12px;
+        
+        }.better-deal-card__history {
+      padding:0 6px;
+        border-radius:4px;
+        background:rgba(80,140,255,0.1);
+        color:#4f7cf7;
+        font-size:12px;
+        
+        }.better-deal-card__item-body {
+      display:flex;
+        align-items:baseline;
+        gap:8px;
+        margin-top:2px;
+        
+        }.better-deal-card__item-price {
+      font-weight:700;
+        color:#d97706;
+        
+        }.better-deal-card__item-original {
+      text-decoration:line-through;
+        color:#8a94a6;
+        font-size:12px;
+        
+        }.better-deal-card__item-verdict {
+      margin-top:2px;
+        color:#8a94a6;
+        font-size:12px;
+        
+        }.better-deal-card__summary {
+      color:#8a94a6;
+        
+        }.better-deal-card__empty {
+      color:#8a94a6;
+        
+        }@keyframes better-spin {
+      to {
+        transform:rotate(360deg);
+          
+          }
+        }
+
     `;
     document.documentElement.appendChild(style);
   }
@@ -9804,7 +10114,7 @@
       return;
     }
 
-    emojiCache.set(key, {
+    lruCacheSet(emojiCache, key, {
       img: emoji.img,
       code: emoji.code || emoji.name || key,
       token: emoji.token || normalizeEmojiToken(emoji.code || emoji.name || key),
@@ -9884,7 +10194,7 @@
         return escapeHtml(part);
       }
 
-      const emoji = emojiCache.get(matched[1]) || emojiCache.get(normalizeEmojiToken(matched[1]));
+      const emoji = lruCacheGet(emojiCache, matched[1]) || lruCacheGet(emojiCache, normalizeEmojiToken(matched[1]));
       return emoji ? renderEmojiImage(emoji) : escapeHtml(normalizeCommentText(part));
     }).join("");
   }
@@ -9902,7 +10212,7 @@
         }
 
         const normalizedToken = normalizeEmojiToken(matched[1]);
-        const emoji = emojiCache.get(matched[1]) || emojiCache.get(normalizedToken);
+        const emoji = lruCacheGet(emojiCache, matched[1]) || lruCacheGet(emojiCache, normalizedToken);
         return emoji ? renderEmojiImage(emoji) : token;
       }).join("");
     }).join("");
@@ -10232,7 +10542,7 @@
     const profileId = getUserProfileId(user || {});
     const normalizedLevel = normalizeUserLevel(getRawUserLevel(user || {}));
     if (profileId && normalizedLevel) {
-      userLevelCache.set(String(profileId), normalizedLevel);
+      lruCacheSet(userLevelCache, String(profileId), normalizedLevel);
     }
   }
 
@@ -10248,7 +10558,7 @@
     }
 
     const profileId = getUserProfileId(user || {});
-    return profileId ? userLevelCache.get(String(profileId)) || "" : "";
+    return profileId ? lruCacheGet(userLevelCache, String(profileId)) || "" : "";
   }
 
   function parseUserLevelValue(level) {
@@ -10902,7 +11212,7 @@
       return null;
     }
 
-    const state = commentCache.get(linkId) || { commentGroups: [] };
+    const state = lruCacheGet(commentCache, linkId) || { commentGroups: [] };
     const previousDetail = state.linkDetail || {};
     state.linkDetail = {
       ...previousDetail,
@@ -10912,17 +11222,17 @@
       feedImageUrls: detail.feedImageUrls.length ? detail.feedImageUrls : (previousDetail.feedImageUrls || []),
       feedThumbnailUrls: detail.feedThumbnailUrls.length ? detail.feedThumbnailUrls : (previousDetail.feedThumbnailUrls || [])
     };
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     updateFeedItemFallbackImages(linkId, state.linkDetail);
     return state.linkDetail;
   }
 
   function cacheCommentPageFromApiData(linkId, page, data, options = {}) {
     if (data?.status !== "ok") {
-      return commentCache.get(linkId);
+      return lruCacheGet(commentCache, linkId);
     }
 
-    const state = commentCache.get(linkId) || { commentGroups: [] };
+    const state = lruCacheGet(commentCache, linkId) || { commentGroups: [] };
     if (options.onlyIfEmpty && state.commentGroups?.length) {
       return state;
     }
@@ -10940,7 +11250,7 @@
     state.loadMoreFailed = false;
     state.loadingMore = false;
     state.hasMore = pageGroups.length >= COMMENT_PAGE_LIMIT;
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     return state;
   }
 
@@ -10977,18 +11287,18 @@
   }
 
   function markFirstCommentPageFailed(linkId) {
-    const state = commentCache.get(linkId) || { commentGroups: [] };
+    const state = lruCacheGet(commentCache, linkId) || { commentGroups: [] };
     state.failed = true;
     state.loadingMore = false;
     state.loadMoreFailed = false;
     state.hasMore = false;
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     renderLinkedPreviews(linkId);
   }
 
   function retryFailedFirstCommentPage(linkId) {
     return retryFirstCommentPageWithIdentity(linkId).then((retryData) => {
-      const retryState = commentCache.get(linkId) || { commentGroups: [] };
+      const retryState = lruCacheGet(commentCache, linkId) || { commentGroups: [] };
       if (retryData?.status !== "ok") {
         markFirstCommentPageFailed(linkId);
         return;
@@ -11002,7 +11312,7 @@
 
   function fetchCommentPage(linkId, page) {
     fetchCommentPageData(linkId, page).then((data) => {
-      const state = commentCache.get(linkId) || { commentGroups: [] };
+      const state = lruCacheGet(commentCache, linkId) || { commentGroups: [] };
       if (data?.status !== "ok") {
         if (page === 1) {
           retryFailedFirstCommentPage(linkId);
@@ -11013,7 +11323,7 @@
         state.loadingMore = false;
         state.loadMoreFailed = page > 1;
         state.hasMore = false;
-        commentCache.set(linkId, state);
+        lruCacheSet(commentCache, linkId, state);
         renderLinkedPreviews(linkId);
         return;
       }
@@ -11027,12 +11337,12 @@
         return;
       }
 
-      const state = commentCache.get(linkId) || { commentGroups: [] };
+      const state = lruCacheGet(commentCache, linkId) || { commentGroups: [] };
       state.failed = page === 1;
       state.loadingMore = false;
       state.loadMoreFailed = page > 1;
       state.hasMore = false;
-      commentCache.set(linkId, state);
+      lruCacheSet(commentCache, linkId, state);
       renderLinkedPreviews(linkId);
     });
   }
@@ -11043,7 +11353,7 @@
   }
 
   function findCommentGroup(linkId, rootCommentId) {
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     const group = state?.commentGroups?.find((item) => {
       return String(getCommentId(item.root)) === String(rootCommentId);
     });
@@ -11077,7 +11387,7 @@
 
     group.repliesLoading = true;
     group.repliesFailed = false;
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     renderLinkedPreviews(linkId);
 
     Promise.all([
@@ -11092,14 +11402,14 @@
       nextGroup.repliesLoading = false;
       if (data?.status !== "ok") {
         nextGroup.repliesFailed = true;
-        commentCache.set(linkId, nextState);
+        lruCacheSet(commentCache, linkId, nextState);
         renderLinkedPreviews(linkId);
         return;
       }
 
       mergeReplyComments(nextGroup, normalizeSubComments(data, rootCommentId));
       nextGroup.repliesFailed = false;
-      commentCache.set(linkId, nextState);
+      lruCacheSet(commentCache, linkId, nextState);
       renderLinkedPreviews(linkId);
     }).catch(() => {
       const { state: nextState, group: nextGroup } = findCommentGroup(linkId, rootCommentId);
@@ -11109,13 +11419,13 @@
 
       nextGroup.repliesLoading = false;
       nextGroup.repliesFailed = true;
-      commentCache.set(linkId, nextState);
+      lruCacheSet(commentCache, linkId, nextState);
       renderLinkedPreviews(linkId);
     });
   }
 
   function renderLinkedPreviews(linkId) {
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     document.querySelectorAll(`.${PREVIEW_CLASS}`).forEach((node) => {
       if (node.dataset.linkId !== linkId) {
         return;
@@ -11135,7 +11445,7 @@
   function renderAllPreviews() {
     document.querySelectorAll(`.${PREVIEW_CLASS}`).forEach((node) => {
       const linkId = node.dataset.linkId || "";
-      const state = commentCache.get(linkId);
+      const state = lruCacheGet(commentCache, linkId);
       if (!state) {
         return;
       }
@@ -11276,7 +11586,7 @@
       return;
     }
 
-    const state = commentCache.get(linkId) || { commentGroups: [] };
+    const state = lruCacheGet(commentCache, linkId) || { commentGroups: [] };
     if (state.linkAwarded) {
       return;
     }
@@ -11284,7 +11594,7 @@
     linkAwardButton.dataset.loading = "1";
     linkAwardButton.classList.add("better-link-award--loading");
     state.linkAwarding = true;
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
 
     runAfterIdentityCookiesRestored(() => fetch(buildLinkAwardApiUrl(), {
       method: "POST",
@@ -11298,7 +11608,7 @@
         award_type: "1"
       }).toString()
     })).then((response) => response.json()).then((data) => {
-      const nextState = commentCache.get(linkId) || state;
+      const nextState = lruCacheGet(commentCache, linkId) || state;
       nextState.linkAwarding = false;
       if (data?.status === "ok") {
         nextState.linkAwarded = true;
@@ -11317,11 +11627,11 @@
           button.classList.remove("better-link-award--loading");
         });
       }
-      commentCache.set(linkId, nextState);
+      lruCacheSet(commentCache, linkId, nextState);
     }).catch(() => {
-      const nextState = commentCache.get(linkId) || state;
+      const nextState = lruCacheGet(commentCache, linkId) || state;
       nextState.linkAwarding = false;
-      commentCache.set(linkId, nextState);
+      lruCacheSet(commentCache, linkId, nextState);
       updateLinkAwardButtons(linkId, (button) => {
         delete button.dataset.loading;
         button.classList.remove("better-link-award--loading");
@@ -11700,7 +12010,7 @@
     }
 
     const linkId = getLinkIdFromItem(item);
-    const cachedImageUrls = commentCache.get(linkId)?.linkDetail?.feedImageUrls || [];
+    const cachedImageUrls = lruCacheGet(commentCache, linkId)?.linkDetail?.feedImageUrls || [];
     const imageUrls = cachedImageUrls.filter(isSafeCommentImageUrl);
     const viewerImageUrls = imageUrls.length
       ? imageUrls
@@ -11713,7 +12023,7 @@
   }
 
   function findCachedComment(linkId, commentId) {
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     if (!state?.commentGroups?.length || !commentId) {
       return { state, group: null, comment: null };
     }
@@ -11755,7 +12065,7 @@
       return;
     }
 
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     if (!state) {
       return;
     }
@@ -11768,7 +12078,7 @@
       rootCommentId: String(target.rootCommentId || target.commentId),
       username: target.username || getCommentUserName(comment)
     };
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     renderLinkedPreviews(linkId);
 
     window.requestAnimationFrame(() => {
@@ -11780,13 +12090,13 @@
 
   function closePreviewReplyForm(preview) {
     const linkId = preview.dataset.linkId || "";
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     if (!state?.activeReplyTarget) {
       return;
     }
 
     delete state.activeReplyTarget;
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     renderLinkedPreviews(linkId);
   }
 
@@ -11841,7 +12151,7 @@
   }
 
   function prependCreatedPostComment(linkId, data, text) {
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     if (!state) {
       return;
     }
@@ -11862,7 +12172,7 @@
     }
     delete state.activeReplyTarget;
     state.commentCount = String((Number.parseInt(state.commentCount, 10) || 0) + 1);
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     renderLinkedPreviews(linkId);
   }
 
@@ -11882,7 +12192,7 @@
     group.replyCount = Math.max(Number(group.replyCount) || 0, group.replies.length);
     delete state.activeReplyTarget;
     state.commentCount = String((Number.parseInt(state.commentCount, 10) || 0) + 1);
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     renderLinkedPreviews(linkId);
   }
 
@@ -11914,7 +12224,7 @@
 
   function getEmojiByShortcode(shortcode) {
     const token = String(shortcode || "").trim().replace(/^\[/, "").replace(/\]$/, "");
-    return emojiCache.get(token) || emojiCache.get(normalizeEmojiToken(token)) || null;
+    return lruCacheGet(emojiCache, token) || lruCacheGet(emojiCache, normalizeEmojiToken(token)) || null;
   }
 
   function recordEmojiUsage(shortcode) {
@@ -12709,13 +13019,13 @@
 
   function loadMorePreviewComments(preview) {
     const linkId = preview.dataset.linkId;
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     if (!linkId || !state || state.loadingMore || !state.hasMore) {
       return;
     }
 
     state.loadingMore = true;
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     renderLinkedPreviews(linkId);
     fetchCommentPage(linkId, (state.page || 1) + 1);
   }
@@ -12726,7 +13036,7 @@
       return;
     }
 
-    const previousState = commentCache.get(linkId);
+    const previousState = lruCacheGet(commentCache, linkId);
     const pending = {
       commentGroups: [],
       page: 0,
@@ -12734,7 +13044,7 @@
       loadingMore: true,
       linkDetail: previousState?.linkDetail
     };
-    commentCache.set(linkId, pending);
+    lruCacheSet(commentCache, linkId, pending);
     renderLinkedPreviews(linkId);
     fetchCommentPage(linkId, 1);
   }
@@ -12760,7 +13070,17 @@
       }
     };
 
-    list.addEventListener("scroll", loadMoreIfNearBottom);
+    // rAF 节流 + passive，避免滚动时每帧重复读取滚动位置强制布局。
+    let listScrollRaf = 0;
+    list.addEventListener("scroll", () => {
+      if (listScrollRaf) {
+        return;
+      }
+      listScrollRaf = window.requestAnimationFrame(() => {
+        listScrollRaf = 0;
+        loadMoreIfNearBottom();
+      });
+    }, { passive: true });
     window.requestAnimationFrame(loadMoreIfNearBottom);
   }
 
@@ -12770,7 +13090,7 @@
       return;
     }
 
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     const hasCommentLoadState = Boolean(
       state
       && (Number(state.page) > 0 || state.loadingMore || state.failed)
@@ -13290,12 +13610,12 @@
       return;
     }
     const linkId = overlay.dataset.linkId;
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     if (!linkId || !state || state.loadingMore || !state.hasMore) {
       return;
     }
     state.loadingMore = true;
-    commentCache.set(linkId, state);
+    lruCacheSet(commentCache, linkId, state);
     fetchCommentPage(linkId, (state.page || 1) + 1);
   }
 
@@ -13304,8 +13624,15 @@
     if (!body || overlay._scrollHandler) {
       return;
     }
+    let bodyScrollRaf = 0;
     const handler = () => {
-      loadMoreTopicPreviewCommentsIfNearBottom(overlay);
+      if (bodyScrollRaf) {
+        return;
+      }
+      bodyScrollRaf = window.requestAnimationFrame(() => {
+        bodyScrollRaf = 0;
+        loadMoreTopicPreviewCommentsIfNearBottom(overlay);
+      });
     };
     overlay._scrollHandler = handler;
     body.addEventListener("scroll", handler, { passive: true });
@@ -13339,7 +13666,7 @@
         // fetchCommentPageData 内部已缓存 linkDetail；评论组仅在弹窗打开前未加载过时写入，
         // 避免把 feed 侧已滚动加载的多页评论回退为第 1 页（onlyIfEmpty）。
         cacheCommentPageFromApiData(linkId, 1, data, { onlyIfEmpty: true });
-        const state = commentCache.get(linkId) || {};
+        const state = lruCacheGet(commentCache, linkId) || {};
         renderTopicPreviewDetail(overlay, state.linkDetail || {});
         if (preview) {
           preview.dataset.commentCount = String(state.commentCount || 0);
@@ -13369,7 +13696,7 @@
 
     const title = overlay.querySelector(".better-topic-preview__title")?.textContent?.trim() || "AI 总结";
     if (aiSummaryCache.has(linkId)) {
-      const cachedSummary = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
+      const cachedSummary = normalizeAiSummaryCacheEntry(lruCacheGet(aiSummaryCache, linkId));
       setAiButtonComplete(button, true);
       setAiSummaryModal(title, cachedSummary.content, false, linkId, cachedSummary.elapsedMs);
       return;
@@ -13399,8 +13726,8 @@
       .then(({ summary, payload }) => {
         const elapsedMs = performance.now() - summaryStartTime;
         const content = cleanAiSummaryContent(summary, aiSettings.allowEmoji) || "没有生成总结。";
-        aiSummaryCache.set(linkId, { content, elapsedMs, payload, chatMessages: [] });
-        persistAiSummaryHistory(linkId, aiSummaryCache.get(linkId), { title });
+        lruCacheSet(aiSummaryCache, linkId, { content, elapsedMs, payload, chatMessages: [] });
+        persistAiSummaryHistory(linkId, lruCacheGet(aiSummaryCache, linkId), { title });
         setAiButtonComplete(button, true);
         if (aiSettings.autoPopup) {
           setAiSummaryModal(title, content, false, linkId, elapsedMs);
@@ -13695,11 +14022,18 @@
       header.addEventListener("pointercancel", stopDragging);
       event.preventDefault();
     });
+    let resizeRaf = 0;
     window.addEventListener("resize", () => {
-      if (!modal.hidden) {
-        positionAiSummaryDialog(dialog);
+      if (resizeRaf) {
+        return;
       }
-    });
+      resizeRaf = window.requestAnimationFrame(() => {
+        resizeRaf = 0;
+        if (!modal.hidden) {
+          positionAiSummaryDialog(dialog);
+        }
+      });
+    }, { passive: true });
     document.body.appendChild(modal);
     return modal;
   }
@@ -13786,7 +14120,7 @@
 
   function syncAiSummaryChatPanel(modal, linkId) {
     const messagesElement = modal.querySelector(".better-ai-summary__chat-messages");
-    const cacheEntry = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
+    const cacheEntry = normalizeAiSummaryCacheEntry(lruCacheGet(aiSummaryCache, linkId));
     renderAiSummaryChatMessages(messagesElement, cacheEntry.chatMessages);
     setAiSummaryChatControls(modal, Boolean(linkId && cacheEntry.content && cacheEntry.payload && isAiConfigured() && !aiSummaryChatSending.has(linkId)));
   }
@@ -13827,9 +14161,9 @@
   }
 
   function updateAiSummaryChatCache(linkId, updater) {
-    const entry = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
+    const entry = normalizeAiSummaryCacheEntry(lruCacheGet(aiSummaryCache, linkId));
     const nextEntry = updater(entry) || entry;
-    aiSummaryCache.set(linkId, nextEntry);
+    lruCacheSet(aiSummaryCache, linkId, nextEntry);
     persistAiSummaryHistory(linkId, nextEntry);
     return nextEntry;
   }
@@ -13842,7 +14176,7 @@
       return;
     }
 
-    const entry = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
+    const entry = normalizeAiSummaryCacheEntry(lruCacheGet(aiSummaryCache, linkId));
     if (!entry.content || !entry.payload || !isAiConfigured()) {
       syncAiSummaryChatPanel(modal, linkId);
       return;
@@ -14093,12 +14427,12 @@
   }
 
   function getCachedSummaryCommentLines(linkId) {
-    const state = commentCache.get(linkId);
+    const state = lruCacheGet(commentCache, linkId);
     return getSummaryCommentLines(state?.commentGroups);
   }
 
   function getCachedLinkDetail(linkId) {
-    return commentCache.get(linkId)?.linkDetail || null;
+    return lruCacheGet(commentCache, linkId)?.linkDetail || null;
   }
 
   function ensureLinkDetail(linkId) {
@@ -14259,7 +14593,7 @@
   }
 
   function mergeSummaryCommentPageState(linkId, page, data) {
-    const state = cacheCommentPageFromApiData(linkId, page, data) || commentCache.get(linkId) || { commentGroups: [] };
+    const state = cacheCommentPageFromApiData(linkId, page, data) || lruCacheGet(commentCache, linkId) || { commentGroups: [] };
     renderLinkedPreviews(linkId);
     return state;
   }
@@ -14267,7 +14601,7 @@
   function fetchSummaryCommentPages(linkId, page = 1) {
     return fetchCommentPageData(linkId, page).then((data) => {
       if (data?.status !== "ok") {
-        return commentCache.get(linkId);
+        return lruCacheGet(commentCache, linkId);
       }
 
       const state = mergeSummaryCommentPageState(linkId, page, data);
@@ -14276,11 +14610,11 @@
       }
 
       return fetchSummaryCommentPages(linkId, page + 1);
-    }).catch(() => commentCache.get(linkId));
+    }).catch(() => lruCacheGet(commentCache, linkId));
   }
 
   function ensureSummaryComments(linkId) {
-    const cachedState = commentCache.get(linkId);
+    const cachedState = lruCacheGet(commentCache, linkId);
     if (hasLoadedAllSummaryComments(cachedState)) {
       return Promise.resolve(getSummaryCommentLines(cachedState.commentGroups));
     }
@@ -14320,7 +14654,7 @@
 
     const title = item.querySelector(".bbs-content__title")?.textContent?.trim() || "AI 总结";
     if (!options.force && aiSummaryCache.has(linkId)) {
-      const cachedSummary = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
+      const cachedSummary = normalizeAiSummaryCacheEntry(lruCacheGet(aiSummaryCache, linkId));
       setAiButtonComplete(button, true);
       setAiSummaryModal(title, cachedSummary.content, false, linkId, cachedSummary.elapsedMs);
       return;
@@ -14348,8 +14682,8 @@
     }).then(({ summary, payload }) => {
       const elapsedMs = performance.now() - summaryStartTime;
       const content = cleanAiSummaryContent(summary, aiSettings.allowEmoji) || "没有生成总结。";
-      aiSummaryCache.set(linkId, { content, elapsedMs, payload, chatMessages: [] });
-      persistAiSummaryHistory(linkId, aiSummaryCache.get(linkId), { title });
+      lruCacheSet(aiSummaryCache, linkId, { content, elapsedMs, payload, chatMessages: [] });
+      persistAiSummaryHistory(linkId, lruCacheGet(aiSummaryCache, linkId), { title });
       setAiButtonComplete(button, true);
       if (aiSettings.autoPopup) {
         setAiSummaryModal(title, content, false, linkId, elapsedMs);
@@ -14370,7 +14704,7 @@
 
     const title = getLinkPageTitle() || "AI 总结";
     if (!options.force && aiSummaryCache.has(linkId)) {
-      const cachedSummary = normalizeAiSummaryCacheEntry(aiSummaryCache.get(linkId));
+      const cachedSummary = normalizeAiSummaryCacheEntry(lruCacheGet(aiSummaryCache, linkId));
       setAiButtonComplete(button, true);
       setAiSummaryModal(title, cachedSummary.content, false, linkId, cachedSummary.elapsedMs);
       return;
@@ -14398,8 +14732,8 @@
     }).then(({ summary, payload }) => {
       const elapsedMs = performance.now() - summaryStartTime;
       const content = cleanAiSummaryContent(summary, aiSettings.allowEmoji) || "没有生成总结。";
-      aiSummaryCache.set(linkId, { content, elapsedMs, payload, chatMessages: [] });
-      persistAiSummaryHistory(linkId, aiSummaryCache.get(linkId), { title });
+      lruCacheSet(aiSummaryCache, linkId, { content, elapsedMs, payload, chatMessages: [] });
+      persistAiSummaryHistory(linkId, lruCacheGet(aiSummaryCache, linkId), { title });
       setAiButtonComplete(button, true);
       if (aiSettings.autoPopup) {
         setAiSummaryModal(title, content, false, linkId, elapsedMs);
@@ -14413,6 +14747,824 @@
   }
 
   // END src\content\ai-summary.js
+  // BEGIN src\content\ai-post-brief.js
+// 长帖 AI 导读条：正文较长的帖子在信息流卡片与详情页标题区提供「📖 AI 导读」按钮，
+// 点击后调用 AI 输出「核心结论一句话 + 3 条要点」，渲染进导读条并缓存到 aiSummaryCache。
+// 与 ai-summary.js 的总结按钮共用 AI 链路，但缓存 key 带 "post-brief:" 前缀防止互相覆盖。
+  const POST_BRIEF_MIN_LENGTH = 800;
+  const POST_BRIEF_CACHE_PREFIX = "post-brief:";
+  const postBriefPending = new Set();
+  const postBriefEntryClass = "better-post-brief-entry";
+  const postBriefButtonClass = "better-post-brief-btn";
+  const postBriefBarClass = "better-post-brief-bar";
+  let postBriefScanScheduled = false;
+  let postBriefLinkPageRetryTimer = null;
+  let postBriefLinkPageRetryCount = 0;
+
+  function getPostBriefConfig() {
+    const postBrief = aiSettings?.postBrief || {};
+    return {
+      enabled: postBrief.enabled !== false,
+      minLength: Number.isFinite(Number(postBrief.minLength)) && Number(postBrief.minLength) > 0
+        ? Number(postBrief.minLength)
+        : POST_BRIEF_MIN_LENGTH
+    };
+  }
+
+  function getPostBriefCacheKey(linkId) {
+    return `${POST_BRIEF_CACHE_PREFIX}${linkId}`;
+  }
+
+  function buildPostBriefSystemPrompt() {
+    return [
+      "你是中文社区长帖导读助手。请基于用户提供的帖子标题与正文，生成一段极简「AI 导读」。",
+      "必须严格遵守以下输出格式：",
+      "1. 第一行以「核心结论」开头，用一句话概括帖子最重要的信息，不超过 40 字。",
+      "2. 第二行起恰好输出 3 条要点，每条以「- 」开头，每条不超过 30 字。",
+      "3. 所有内容总长度不超过 120 个汉字。",
+      "4. 只依据帖子已有内容，不要编造、不要输出 JSON、不要使用 markdown 标题或代码块。"
+    ].join("\n");
+  }
+
+  function buildPostBriefPayload(title, content) {
+    return [
+      "帖子标题：",
+      String(title || "").trim(),
+      "",
+      "帖子正文：",
+      String(content || "").trim()
+    ].join("\n");
+  }
+
+  function renderPostBriefHtml(content) {
+    const text = cleanAiSummaryContent(String(content || ""), false);
+    const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    if (!lines.length) {
+      return "";
+    }
+
+    const conclusion = String(lines[0] || "").replace(/^核心结论[:：]\s*/i, "");
+    const points = lines.slice(1)
+      .map((line) => String(line).replace(/^[-•*]\s*/, ""))
+      .filter(Boolean);
+    const html = [];
+    if (conclusion) {
+      html.push(
+        '<div class="better-post-brief__conclusion">'
+          + '<span class="better-post-brief__conclusion-label">核心结论</span>'
+          + `<span class="better-post-brief__conclusion-text">${escapeHtml(conclusion)}</span>`
+          + "</div>"
+      );
+    }
+    if (points.length) {
+      html.push(
+        `<ul class="better-post-brief__points">${points
+          .map((point) => `<li>${escapeHtml(point)}</li>`)
+          .join("")}</ul>`
+      );
+    }
+    return html.join("");
+  }
+
+  function renderPostBriefLoading(bar) {
+    bar.innerHTML = '<div class="better-post-brief__loading"><span class="better-post-brief__spinner"></span><span>正在生成 AI 导读…</span></div>';
+  }
+
+  function renderPostBriefError(bar, error, entry, linkId, title, content) {
+    bar.innerHTML = `<div class="better-post-brief__error">生成失败：${escapeHtml(error?.message || "AI 请求失败")}</div>`
+      + '<button class="better-post-brief__retry" type="button">重试</button>';
+    const retry = bar.querySelector(".better-post-brief__retry");
+    retry?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      startPostBriefRequest(entry, linkId, title, content);
+    });
+  }
+
+  function renderPostBriefContent(bar, html) {
+    bar.innerHTML = `<div class="better-post-brief__content">${html}</div>`;
+  }
+
+  function startPostBriefRequest(entry, linkId, title, content) {
+    const bar = entry.querySelector(`.${postBriefBarClass}`);
+    if (!bar || postBriefPending.has(linkId)) {
+      return;
+    }
+
+    renderPostBriefLoading(bar);
+    postBriefPending.add(linkId);
+    requestAiChat([
+      { role: "system", content: buildPostBriefSystemPrompt() },
+      { role: "user", content: buildPostBriefPayload(title, content) }
+    ], 0.3).then((result) => {
+      const raw = typeof result === "string" ? result : (result?.content ?? "");
+      const html = renderPostBriefHtml(raw);
+      const fallbackHtml = html || `<p>${escapeHtml(raw || "未能生成导读。")}</p>`;
+      lruCacheSet(aiSummaryCache, getPostBriefCacheKey(linkId), {
+        t: Date.now(),
+        html: fallbackHtml
+      });
+      renderPostBriefContent(bar, fallbackHtml);
+    }).catch((error) => {
+      renderPostBriefError(bar, error, entry, linkId, title, content);
+    }).finally(() => {
+      postBriefPending.delete(linkId);
+    });
+  }
+
+  function togglePostBriefEntry(entry, linkId, title, content) {
+    const bar = entry.querySelector(`.${postBriefBarClass}`);
+    if (!bar) {
+      return;
+    }
+
+    if (!bar.hidden) {
+      bar.hidden = true;
+      entry.classList.remove("is-open");
+      return;
+    }
+
+    bar.hidden = false;
+    entry.classList.add("is-open");
+    const cached = lruCacheGet(aiSummaryCache, getPostBriefCacheKey(linkId));
+    if (cached?.html) {
+      renderPostBriefContent(bar, cached.html);
+      return;
+    }
+    startPostBriefRequest(entry, linkId, title, content);
+  }
+
+  function buildPostBriefEntry(linkId, title, content) {
+    const entry = document.createElement("div");
+    entry.className = postBriefEntryClass;
+    entry.dataset.linkId = String(linkId || "");
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = postBriefButtonClass;
+    button.setAttribute("aria-label", "AI 导读");
+    button.title = "AI 导读：核心结论 + 3 条要点";
+    button.innerHTML = '<span class="better-post-brief-btn__icon">📖</span><span class="better-post-brief-btn__label">AI 导读</span>';
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      togglePostBriefEntry(entry, linkId, title, content);
+    });
+
+    const bar = document.createElement("div");
+    bar.className = postBriefBarClass;
+    bar.hidden = true;
+
+    entry.appendChild(button);
+    entry.appendChild(bar);
+    return entry;
+  }
+
+  function mountPostBriefEntry(anchor, linkId, title, content) {
+    const entry = buildPostBriefEntry(linkId, title, content);
+    const titleElement = anchor.querySelector(".bbs-content__title");
+    if (titleElement) {
+      titleElement.insertAdjacentElement("afterend", entry);
+    } else {
+      anchor.appendChild(entry);
+    }
+    return entry;
+  }
+
+  function syncFeedItemPostBrief(item) {
+    if (!(item instanceof Element) || !item.isConnected) {
+      return;
+    }
+    const linkId = getLinkIdFromItem(item);
+    const existing = item.querySelector(`.${postBriefButtonClass}`);
+    const config = getPostBriefConfig();
+    if (!linkId || !config.enabled || !isAiConfigured()) {
+      existing?.closest(`.${postBriefEntryClass}`)?.remove();
+      return;
+    }
+    if (existing) {
+      return;
+    }
+
+    const title = item.querySelector(".bbs-content__title")?.textContent?.trim() || "";
+    const content = item.querySelector(".bbs-content__content")?.textContent?.trim() || "";
+    if (content.length < config.minLength) {
+      return;
+    }
+    mountPostBriefEntry(item, linkId, title, content);
+  }
+
+  function syncLinkPagePostBrief() {
+    if (!isLinkPage()) {
+      return;
+    }
+    const config = getPostBriefConfig();
+    const existingEntry = document.querySelector(`.hb-bbs-link .${postBriefEntryClass}`);
+    if (!config.enabled || !isAiConfigured()) {
+      existingEntry?.remove();
+      return;
+    }
+    if (existingEntry) {
+      return;
+    }
+
+    const linkId = getCurrentLinkId();
+    const title = getLinkPageTitle();
+    const content = getLinkPageContentText();
+    if (!linkId || content.length < config.minLength) {
+      return;
+    }
+
+    const titleElement = document.querySelector(".hb-bbs-link .section-title__content");
+    if (!titleElement) {
+      return;
+    }
+    const entry = buildPostBriefEntry(linkId, title, content);
+    titleElement.insertAdjacentElement("afterend", entry);
+  }
+
+  function scanPostBriefMounts() {
+    document.querySelectorAll(FEED_ITEM_SELECTOR).forEach(syncFeedItemPostBrief);
+    syncLinkPagePostBrief();
+    if (isLinkPage()) {
+      schedulePostBriefLinkPageRetries();
+    }
+  }
+
+  function schedulePostBriefLinkPageRetries() {
+    if (postBriefLinkPageRetryTimer) {
+      window.clearTimeout(postBriefLinkPageRetryTimer);
+    }
+    postBriefLinkPageRetryCount = 0;
+    postBriefLinkPageRetryTimer = window.setInterval(() => {
+      postBriefLinkPageRetryCount += 1;
+      if (!isLinkPage() || postBriefLinkPageRetryCount > 5 || document.querySelector(`.hb-bbs-link .${postBriefEntryClass}`)) {
+        window.clearInterval(postBriefLinkPageRetryTimer);
+        postBriefLinkPageRetryTimer = null;
+        return;
+      }
+      syncLinkPagePostBrief();
+    }, 600);
+  }
+
+  function schedulePostBriefScan() {
+    if (postBriefScanScheduled) {
+      return;
+    }
+    postBriefScanScheduled = true;
+    window.requestAnimationFrame(() => {
+      postBriefScanScheduled = false;
+      scanPostBriefMounts();
+    });
+  }
+
+  let postBriefObserver = null;
+
+  function observePostBriefDom() {
+    if (postBriefObserver || !document.body || !isAiConfigured()) {
+      return;
+    }
+    const selector = `${FEED_ITEM_SELECTOR}, .hb-bbs-link`;
+    postBriefObserver = new MutationObserver((mutations) => {
+      if (handlingPage) {
+        return;
+      }
+      const relevant = mutations.some((mutation) => {
+        const changedElements = [...mutation.addedNodes, ...mutation.removedNodes]
+          .filter((node) => node instanceof Element);
+        if (changedElements.some((node) => node.matches(selector) || node.querySelector(selector))) {
+          return true;
+        }
+        if (changedElements.length && changedElements.every((node) => isExtensionOwnedElement(node))) {
+          return false;
+        }
+        const target = mutation.target?.nodeType === Node.ELEMENT_NODE
+          ? mutation.target
+          : mutation.target?.parentElement;
+        return Boolean(target && mutationNodeMatches(target, selector));
+      });
+      if (relevant) {
+        schedulePostBriefScan();
+      }
+    });
+    postBriefObserver.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true
+    });
+  }
+
+  function initPostBrief() {
+    window.addEventListener(AI_SETTINGS_EVENT, () => {
+      schedulePostBriefScan();
+      observePostBriefDom();
+    });
+    if (document.body) {
+      schedulePostBriefScan();
+      observePostBriefDom();
+    } else {
+      document.addEventListener("DOMContentLoaded", () => {
+        schedulePostBriefScan();
+        observePostBriefDom();
+      }, { once: true });
+    }
+  }
+
+  initPostBrief();
+  // END src\content\ai-post-brief.js
+  // BEGIN src\content\ai-deal-card.js
+// 促销帖省钱助手：帖子标题+正文命中促销正则时，在标题下注入「💰 省钱助手」卡片。
+// 默认自动调用 AI 解析为 JSON 优惠列表，并把史低记录写入 localStorage 的 dealPriceHistory。
+// 注意：main world 无法直接访问 chrome.storage，且 ai-bridge 的 LOCAL_SETTINGS 白名单
+// 只放行 constants.js 中登记的 key，因此这里用 localStorage 承载 dealPriceHistory，
+// key 名与需求保持一致，后续如需迁移到 chrome.storage 只需在 constants.js 登记后替换读写层。
+  const DEAL_HISTORY_STORAGE_KEY = "dealPriceHistory";
+  const DEAL_CARD_DEBOUNCE_MS = 500;
+  const DEAL_TRIGGER_PATTERNS = [
+    /\bsteam\b/i,
+    /\bepic\b/i,
+    /限免/,
+    /免费领/,
+    /免费下载/,
+    /免费送/,
+    /喜[＋加]\s*1/,
+    /史低/,
+    /历史最低/,
+    /折扣/,
+    /打折/,
+    /特卖/,
+    /促销/,
+    /优惠/,
+    /降价/,
+    /-\s?\d+\s*%/
+  ];
+  const dealCardPending = new Set();
+  let dealCardScanScheduled = false;
+  let dealCardLinkPageRetryTimer = null;
+  let dealCardLinkPageRetryCount = 0;
+  let dealCardHistoryCache = {};
+  let dealCardHistoryLoaded = false;
+  let dealCardHistoryWriteTimer = null;
+  const dealCardHistoryMerge = {};
+
+  function getDealCardConfig() {
+    const dealCard = aiSettings?.dealCard || {};
+    return {
+      enabled: dealCard.enabled !== false,
+      autoAnalyze: dealCard.autoAnalyze !== false
+    };
+  }
+
+  function isDealTriggerText(text) {
+    const haystack = String(text || "");
+    return DEAL_TRIGGER_PATTERNS.some((pattern) => pattern.test(haystack));
+  }
+
+  function formatDealHistoryDate(timestamp) {
+    const date = new Date(Number(timestamp) || Date.now());
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  }
+
+  function parseDealPrice(text) {
+    const value = String(text || "").trim();
+    if (!value) {
+      return null;
+    }
+    if (/免费|free/i.test(value)) {
+      return 0;
+    }
+    const match = value.replace(/[，,]/g, ".").match(/\d+(?:\.\d+)?/);
+    if (!match) {
+      return null;
+    }
+    const price = Number.parseFloat(match[0]);
+    return Number.isFinite(price) ? price : null;
+  }
+
+  function formatDealPrice(price) {
+    const value = Number(price);
+    if (!Number.isFinite(value)) {
+      return "";
+    }
+    if (value === 0) {
+      return "免费";
+    }
+    return `¥${value}`;
+  }
+
+  function readDealPriceHistory() {
+    try {
+      const value = localStorage.getItem(DEAL_HISTORY_STORAGE_KEY);
+      const parsed = value ? JSON.parse(value) : null;
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function ensureDealHistoryCache() {
+    if (!dealCardHistoryLoaded) {
+      dealCardHistoryCache = readDealPriceHistory();
+      dealCardHistoryLoaded = true;
+    }
+    return dealCardHistoryCache;
+  }
+
+  function queueDealPriceHistoryUpdate(game, price) {
+    const key = String(game || "").toLocaleLowerCase().trim();
+    if (!key || !Number.isFinite(price)) {
+      return;
+    }
+
+    const current = dealCardHistoryCache[key] || {};
+    const currentLowest = Number(current.lowest);
+    const update = {
+      lastSeen: Date.now(),
+      lastPrice: price
+    };
+    if (!Number.isFinite(currentLowest) || price < currentLowest) {
+      update.lowest = price;
+      update.lowestDate = formatDealHistoryDate(Date.now());
+    }
+    const merged = { ...current, ...update };
+    dealCardHistoryCache[key] = merged;
+    dealCardHistoryMerge[key] = merged;
+
+    if (dealCardHistoryWriteTimer) {
+      window.clearTimeout(dealCardHistoryWriteTimer);
+    }
+    dealCardHistoryWriteTimer = window.setTimeout(flushDealPriceHistoryWrite, DEAL_CARD_DEBOUNCE_MS);
+  }
+
+  function flushDealPriceHistoryWrite() {
+    dealCardHistoryWriteTimer = null;
+    const updates = { ...dealCardHistoryMerge };
+    Object.keys(dealCardHistoryMerge).forEach((key) => {
+      delete dealCardHistoryMerge[key];
+    });
+    if (!Object.keys(updates).length) {
+      return;
+    }
+
+    let stored = {};
+    try {
+      const value = localStorage.getItem(DEAL_HISTORY_STORAGE_KEY);
+      stored = value ? JSON.parse(value) : {};
+    } catch {
+      stored = {};
+    }
+    if (!stored || typeof stored !== "object") {
+      stored = {};
+    }
+    Object.entries(updates).forEach(([key, update]) => {
+      const existing = stored[key] && typeof stored[key] === "object" ? stored[key] : {};
+      stored[key] = { ...existing, ...update };
+    });
+    try {
+      localStorage.setItem(DEAL_HISTORY_STORAGE_KEY, JSON.stringify(stored));
+    } catch {
+      // 配额超限等异常静默降级，不影响本次分析结果展示
+    }
+  }
+
+  function getDealHistoryRecord(game) {
+    const key = String(game || "").toLocaleLowerCase().trim();
+    return key ? (dealCardHistoryCache[key] || null) : null;
+  }
+
+  function formatDealHistoryBadge(record, currentPrice) {
+    if (!record) {
+      return "";
+    }
+    const lowest = Number(record.lowest);
+    if (!Number.isFinite(lowest)) {
+      return "";
+    }
+    const current = parseDealPrice(currentPrice);
+    const isCurrentLowest = Number.isFinite(current) && current === lowest;
+    const dateText = record.lowestDate ? `（${escapeHtml(record.lowestDate)}）` : "";
+    if (isCurrentLowest) {
+      return `<span class="better-deal-card__history">当前即史低 ${escapeHtml(formatDealPrice(lowest))}${dateText}</span>`;
+    }
+    return `<span class="better-deal-card__history">曾史低 ${escapeHtml(formatDealPrice(lowest))}${dateText}</span>`;
+  }
+
+  function buildDealCardSystemPrompt() {
+    return [
+      "你是游戏促销信息结构化助手。请基于用户提供的帖子标题与正文，提取其中出现的游戏促销/优惠信息。",
+      "只输出一个 JSON 对象，不要包含任何解释文字或 markdown 代码块标记：",
+      '{"deals":[{"game":"游戏名称","platform":"平台，如 Steam/Epic/PSN/Switch 等","currentPrice":"当前价格，如 ¥58 或 $9.99，免费则写 免费","originalPrice":"原价，没有则填空字符串","discount":"折扣，如 60% 或 史低","verdict":"值不值得买的一句话，不超过 20 字"}]}',
+      "若帖子没有明确促销信息，则输出 {\"deals\":[]}。"
+    ].join("\n");
+  }
+
+  function buildDealCardPayload(title, content) {
+    return [
+      "帖子标题：",
+      String(title || "").trim(),
+      "",
+      "帖子正文：",
+      String(content || "").trim()
+    ].join("\n");
+  }
+
+  function extractDealJson(raw) {
+    const text = String(raw || "").trim();
+    if (!text) {
+      return null;
+    }
+    let jsonText = text;
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenced) {
+      jsonText = fenced[1].trim();
+    }
+    const braceStart = jsonText.indexOf("{");
+    const braceEnd = jsonText.lastIndexOf("}");
+    if (braceStart !== -1 && braceEnd > braceStart) {
+      jsonText = jsonText.slice(braceStart, braceEnd + 1);
+    }
+    try {
+      return JSON.parse(jsonText);
+    } catch {
+      return null;
+    }
+  }
+
+  function normalizeDealList(payload) {
+    if (!payload || typeof payload !== "object") {
+      return [];
+    }
+    const deals = Array.isArray(payload.deals) ? payload.deals : [];
+    return deals.map((deal) => ({
+      game: String(deal?.game || "").trim().slice(0, 60),
+      platform: String(deal?.platform || "").trim().slice(0, 30),
+      currentPrice: String(deal?.currentPrice || "").trim().slice(0, 30),
+      originalPrice: String(deal?.originalPrice || "").trim().slice(0, 30),
+      discount: String(deal?.discount || "").trim().slice(0, 30),
+      verdict: String(deal?.verdict || "").trim().slice(0, 60)
+    })).filter((deal) => deal.game || deal.currentPrice || deal.platform);
+  }
+
+  function renderDealCardLoading(card) {
+    card.innerHTML = '<div class="better-deal-card__loading"><span class="better-deal-card__spinner"></span><span>正在分析促销信息…</span></div>';
+  }
+
+  function renderDealCardError(card, error, entry, linkId, title, content) {
+    card.innerHTML = `<div class="better-deal-card__error">分析失败：${escapeHtml(error?.message || "AI 请求失败")}</div>`
+      + '<button class="better-deal-card__retry" type="button">重试</button>';
+    const retry = card.querySelector(".better-deal-card__retry");
+    retry?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      startDealCardAnalysis(entry, linkId, title, content);
+    });
+  }
+
+  function renderDealCardDeals(card, deals, fallbackText) {
+    let html = "";
+    if (deals.length) {
+      html = deals.map((deal) => {
+        const history = getDealHistoryRecord(deal.game);
+        return [
+          '<div class="better-deal-card__item">',
+          '<div class="better-deal-card__item-head">',
+          `<span class="better-deal-card__item-game">${escapeHtml(deal.game || "未知游戏")}</span>`,
+          deal.platform ? `<span class="better-deal-card__item-platform">${escapeHtml(deal.platform)}</span>` : "",
+          deal.discount ? `<span class="better-deal-card__item-discount">${escapeHtml(deal.discount)}</span>` : "",
+          formatDealHistoryBadge(history, deal.currentPrice),
+          "</div>",
+          '<div class="better-deal-card__item-body">',
+          `<span class="better-deal-card__item-price">${escapeHtml(deal.currentPrice || "—")}</span>`,
+          deal.originalPrice ? `<span class="better-deal-card__item-original">${escapeHtml(deal.originalPrice)}</span>` : "",
+          "</div>",
+          deal.verdict ? `<div class="better-deal-card__item-verdict">${escapeHtml(deal.verdict)}</div>` : "",
+          "</div>"
+        ].join("");
+      }).join("");
+    } else if (fallbackText) {
+      html = `<div class="better-deal-card__summary">${escapeHtml(fallbackText)}</div>`;
+    } else {
+      html = '<div class="better-deal-card__empty">未解析到明确的促销信息。</div>';
+    }
+    card.innerHTML = html;
+  }
+
+  function startDealCardAnalysis(entry, linkId, title, content) {
+    if (dealCardPending.has(linkId)) {
+      return;
+    }
+    const card = entry.querySelector(".better-deal-card__body");
+    if (!card) {
+      return;
+    }
+
+    ensureDealHistoryCache();
+    renderDealCardLoading(card);
+    dealCardPending.add(linkId);
+    requestAiChat([
+      { role: "system", content: buildDealCardSystemPrompt() },
+      { role: "user", content: buildDealCardPayload(title, content) }
+    ], 0.2).then((result) => {
+      const raw = typeof result === "string" ? result : (result?.content ?? "");
+      const parsed = extractDealJson(raw);
+      const deals = parsed ? normalizeDealList(parsed) : [];
+      if (deals.length) {
+        deals.forEach((deal) => {
+          const price = parseDealPrice(deal.currentPrice);
+          if (deal.game && Number.isFinite(price)) {
+            queueDealPriceHistoryUpdate(deal.game, price);
+          }
+        });
+      }
+      renderDealCardDeals(card, deals, cleanAiSummaryContent(raw, false));
+    }).catch((error) => {
+      renderDealCardError(card, error, entry, linkId, title, content);
+    }).finally(() => {
+      dealCardPending.delete(linkId);
+    });
+  }
+
+  function buildDealCardEntry(linkId, title, content, autoAnalyze) {
+    const entry = document.createElement("div");
+    entry.className = "better-deal-card";
+    entry.dataset.linkId = String(linkId || "");
+
+    const head = document.createElement("div");
+    head.className = "better-deal-card__head";
+    head.innerHTML = '<span class="better-deal-card__icon">💰</span><span class="better-deal-card__title">省钱助手</span>';
+
+    const body = document.createElement("div");
+    body.className = "better-deal-card__body";
+    if (autoAnalyze) {
+      startDealCardAnalysis(entry, linkId, title, content);
+    } else {
+      body.innerHTML = '<button class="better-deal-card__analyze" type="button">开始分析</button>';
+      body.querySelector(".better-deal-card__analyze").addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        startDealCardAnalysis(entry, linkId, title, content);
+      });
+    }
+
+    entry.appendChild(head);
+    entry.appendChild(body);
+    return entry;
+  }
+
+  function mountDealCardEntry(anchor, linkId, title, content, autoAnalyze) {
+    const entry = buildDealCardEntry(linkId, title, content, autoAnalyze);
+    const titleElement = anchor.querySelector(".bbs-content__title");
+    if (titleElement) {
+      titleElement.insertAdjacentElement("afterend", entry);
+    } else {
+      anchor.appendChild(entry);
+    }
+    return entry;
+  }
+
+  function syncFeedItemDealCard(item) {
+    if (!(item instanceof Element) || !item.isConnected) {
+      return;
+    }
+    const linkId = getLinkIdFromItem(item);
+    const existing = item.querySelector(".better-deal-card");
+    const config = getDealCardConfig();
+    if (!linkId || !config.enabled || !isAiConfigured()) {
+      existing?.remove();
+      return;
+    }
+    if (existing) {
+      return;
+    }
+
+    const title = item.querySelector(".bbs-content__title")?.textContent?.trim() || "";
+    const content = item.querySelector(".bbs-content__content")?.textContent?.trim() || "";
+    if (!isDealTriggerText(`${title}\n${content}`)) {
+      return;
+    }
+    mountDealCardEntry(item, linkId, title, content, config.autoAnalyze !== false);
+  }
+
+  function syncLinkPageDealCard() {
+    if (!isLinkPage()) {
+      return;
+    }
+    const config = getDealCardConfig();
+    const existing = document.querySelector(".hb-bbs-link .better-deal-card");
+    if (!config.enabled || !isAiConfigured()) {
+      existing?.remove();
+      return;
+    }
+    if (existing) {
+      return;
+    }
+
+    const linkId = getCurrentLinkId();
+    const title = getLinkPageTitle();
+    const content = getLinkPageContentText();
+    if (!linkId || !isDealTriggerText(`${title}\n${content}`)) {
+      return;
+    }
+
+    const titleElement = document.querySelector(".hb-bbs-link .section-title__content");
+    if (!titleElement) {
+      return;
+    }
+    const entry = buildDealCardEntry(linkId, title, content, config.autoAnalyze !== false);
+    titleElement.insertAdjacentElement("afterend", entry);
+  }
+
+  function scanDealCardMounts() {
+    document.querySelectorAll(FEED_ITEM_SELECTOR).forEach(syncFeedItemDealCard);
+    syncLinkPageDealCard();
+    if (isLinkPage()) {
+      scheduleDealCardLinkPageRetries();
+    }
+  }
+
+  function scheduleDealCardLinkPageRetries() {
+    if (dealCardLinkPageRetryTimer) {
+      window.clearTimeout(dealCardLinkPageRetryTimer);
+    }
+    dealCardLinkPageRetryCount = 0;
+    dealCardLinkPageRetryTimer = window.setInterval(() => {
+      dealCardLinkPageRetryCount += 1;
+      if (!isLinkPage() || dealCardLinkPageRetryCount > 5 || document.querySelector(".hb-bbs-link .better-deal-card")) {
+        window.clearInterval(dealCardLinkPageRetryTimer);
+        dealCardLinkPageRetryTimer = null;
+        return;
+      }
+      syncLinkPageDealCard();
+    }, 600);
+  }
+
+  function scheduleDealCardScan() {
+    if (dealCardScanScheduled) {
+      return;
+    }
+    dealCardScanScheduled = true;
+    window.requestAnimationFrame(() => {
+      dealCardScanScheduled = false;
+      scanDealCardMounts();
+    });
+  }
+
+  let dealCardObserver = null;
+
+  function observeDealCardDom() {
+    if (dealCardObserver || !document.body || !isAiConfigured()) {
+      return;
+    }
+    const selector = `${FEED_ITEM_SELECTOR}, .hb-bbs-link`;
+    dealCardObserver = new MutationObserver((mutations) => {
+      if (handlingPage) {
+        return;
+      }
+      const relevant = mutations.some((mutation) => {
+        const changedElements = [...mutation.addedNodes, ...mutation.removedNodes]
+          .filter((node) => node instanceof Element);
+        if (changedElements.some((node) => node.matches(selector) || node.querySelector(selector))) {
+          return true;
+        }
+        if (changedElements.length && changedElements.every((node) => isExtensionOwnedElement(node))) {
+          return false;
+        }
+        const target = mutation.target?.nodeType === Node.ELEMENT_NODE
+          ? mutation.target
+          : mutation.target?.parentElement;
+        return Boolean(target && mutationNodeMatches(target, selector));
+      });
+      if (relevant) {
+        scheduleDealCardScan();
+      }
+    });
+    dealCardObserver.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true
+    });
+  }
+
+  function initDealCard() {
+    window.addEventListener(AI_SETTINGS_EVENT, () => {
+      scheduleDealCardScan();
+      observeDealCardDom();
+    });
+    if (document.body) {
+      ensureDealHistoryCache();
+      scheduleDealCardScan();
+      observeDealCardDom();
+    } else {
+      document.addEventListener("DOMContentLoaded", () => {
+        ensureDealHistoryCache();
+        scheduleDealCardScan();
+        observeDealCardDom();
+      }, { once: true });
+    }
+  }
+
+  initDealCard();
+  // END src\content\ai-deal-card.js
   // BEGIN src\content\ai-comment-suggest.js
 // AI 建议回复：评论预览回复表单中根据帖子与回复目标生成多条候选回复。
 // 复用同 IIFE 作用域内的 AI 请求链路与帖子上下文构造（ai-summary.js / feed.js）。
@@ -14562,7 +15714,7 @@
     }
   }
 
-  function renderAiSuggestPanel(form, suggestions, errorMessage) {
+  function renderAiSuggestPanel(form, suggestions, errorMessage, elapsedMs = null) {
     closeAiSuggestPanel(form);
     const state = getAiSuggestFormState(form);
     const panel = document.createElement("div");
@@ -14611,6 +15763,12 @@
 
     const footer = document.createElement("div");
     footer.className = "better-comment-preview__ai-suggest-panel-footer";
+    if (Number.isFinite(elapsedMs) && elapsedMs >= 0) {
+      const elapsed = document.createElement("span");
+      elapsed.className = "better-comment-preview__ai-suggest-elapsed";
+      elapsed.textContent = `生成耗时 ${(elapsedMs / 1000).toFixed(1)} 秒`;
+      footer.appendChild(elapsed);
+    }
     const regenerateButton = document.createElement("button");
     regenerateButton.className = "better-comment-preview__ai-suggest-regenerate";
     regenerateButton.type = "button";
@@ -14643,14 +15801,16 @@
     }
     state.loading = true;
     setAiSuggestButtonLoading(form, true);
+    const suggestStartTime = performance.now();
     try {
       const messages = await collectAiSuggestContext({ linkId, commentId });
       const content = await requestAiChat(messages, 0.7);
+      const elapsedMs = performance.now() - suggestStartTime;
       const suggestions = splitAiSuggestions(content);
       if (!suggestions.length) {
         throw new Error("AI 未生成有效的回复建议");
       }
-      renderAiSuggestPanel(form, suggestions, "");
+      renderAiSuggestPanel(form, suggestions, "", elapsedMs);
     } catch (error) {
       renderAiSuggestPanel(form, [], error?.message || "AI 建议生成失败");
       if (!regenerate) {
@@ -14819,7 +15979,7 @@
     contentEl.className = "better-comment-preview__opinions-content";
     if (content) {
       const lines = String(content).split("\n");
-      contentEl.appendChild(renderMarkdownBlock(lines));
+      contentEl.innerHTML = renderMarkdownBlock(lines);
     } else {
       contentEl.textContent = "准备中...";
     }
@@ -14998,7 +16158,7 @@
     if (!normalized.linkId || !normalized.content) {
       return;
     }
-    aiSummaryCache.set(normalized.linkId, {
+    lruCacheSet(aiSummaryCache, normalized.linkId, {
       content: normalized.content,
       elapsedMs: null,
       payload: normalized.payload,
@@ -15424,7 +16584,7 @@
     if (item.closest(`.${ROW_CLASS}`)) {
       ensureFeedItemUserLevel(item);
       normalizeNativeFeedImageLayout(item);
-      ensureFeedItemFallbackImages(item, commentCache.get(getLinkIdFromItem(item))?.linkDetail);
+      ensureFeedItemFallbackImages(item, lruCacheGet(commentCache, getLinkIdFromItem(item))?.linkDetail);
       return;
     }
 
@@ -15437,7 +16597,7 @@
     ensureAiSummaryButton(item);
     ensureFeedItemReadLaterButton(item, linkId);
     ensureFeedItemUserLevel(item);
-    setFeedItemPublishTime(item, commentCache.get(linkId)?.linkCreateAt);
+    setFeedItemPublishTime(item, lruCacheGet(commentCache, linkId)?.linkCreateAt);
 
     const searchResultRow = item.parentElement?.classList.contains("search-result__link")
       ? item.parentElement
@@ -15460,7 +16620,7 @@
     normalizeNativeFeedImageLayout(item);
     observeRowHeight(row, item);
     observePreview(preview);
-    ensureFeedItemFallbackImages(item, commentCache.get(linkId)?.linkDetail);
+    ensureFeedItemFallbackImages(item, lruCacheGet(commentCache, linkId)?.linkDetail);
   }
 
   function enhanceFeed() {
@@ -15702,19 +16862,15 @@
         return NodeFilter.FILTER_ACCEPT;
       }
     });
-    let changed = false;
     const textNodes = [];
     while (walker.nextNode()) {
       textNodes.push(walker.currentNode);
     }
     textNodes.forEach((textNode) => {
-      if (highlightTextNode(textNode, pattern)) {
-        changed = true;
-      }
+      highlightTextNode(textNode, pattern);
     });
-    if (changed) {
-      element.dataset.betterHighlighted = "true";
-    }
+    // 无论是否命中都打标记，避免后续 mutation 重复扫描同一元素（重置走 resetKeywordHighlights）。
+    element.dataset.betterHighlighted = "true";
   }
 
   function scanKeywordHighlights() {
@@ -15736,11 +16892,50 @@
     });
   }
 
+  function scanKeywordHighlightTargets(targets) {
+    const pattern = getHighlightKeywordPattern();
+    if (!pattern || !targets.length) {
+      return;
+    }
+    targets.forEach((element) => {
+      applyKeywordHighlightToElement(element);
+    });
+  }
+
+  function collectAddedHighlightTargets(mutations) {
+    const targets = new Set();
+    mutations.forEach((mutation) => {
+      if (mutation.target instanceof Element && mutation.target.matches(HIGHLIGHT_TARGET_SELECTOR)) {
+        targets.add(mutation.target);
+      }
+      mutation.addedNodes.forEach((node) => {
+        if (!(node instanceof Element)) {
+          return;
+        }
+        if (node.matches(HIGHLIGHT_TARGET_SELECTOR)) {
+          targets.add(node);
+        }
+        if (node.querySelectorAll) {
+          node.querySelectorAll(HIGHLIGHT_TARGET_SELECTOR).forEach((element) => {
+            targets.add(element);
+          });
+        }
+      });
+    });
+    return [...targets];
+  }
+
   function applyKeywordHighlightsAndObserve() {
     scanKeywordHighlights();
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((mutations) => {
+      const targets = collectAddedHighlightTargets(mutations);
+      if (!targets.length) {
+        return;
+      }
       window.clearTimeout(highlightScanTimer);
-      highlightScanTimer = window.setTimeout(scanKeywordHighlights, 300);
+      highlightScanTimer = window.setTimeout(() => {
+        scanKeywordHighlightTargets(targets);
+      }, 300);
     });
     observer.observe(document.documentElement, {
       childList: true,
@@ -15751,6 +16946,708 @@
 
   let highlightScanTimer = 0;
   // END src\content\keyword-highlight.js
+  // BEGIN src\content\ai-semantic-block.js
+// 智能语义屏蔽：在关键词屏蔽之上叠加 AI 语义判断层。
+// 说明：
+// - 本文件是共享 IIFE 顶层作用域内的拼接片段（非 ES module），依赖既有作用域中可用的
+//   requestAiChat / isAiConfigured / escapeHtml / createLruCache / lruCacheSet /
+//   lruCacheGet / requestLocalSettingsState / scheduleRowHeightSync 以及共享常量。
+// - 批量判定未命中关键词的可见评论 → 折叠展示（折叠条复用扩展统一的 better- 视觉约定，
+//   标注「AI 语义屏蔽：{reason}」，点击可展开）。
+// - 配置由主会话通过 setSemanticBlockConfig(obj) 注入；本文件同时尝试从本地设置读取
+//   better-xiaoheihe-semantic-block-* 键兜底。
+// - 集成点：加载时包装 renderPreview（渲染完成即触发重扫），配合 MutationObserver 兜底
+//   链接页原生评论渲染；handlePage 重增强天然幂等（模块级挂载守卫）。
+
+const SEMANTIC_BLOCK_CACHE_LIMIT = 500;
+const SEMANTIC_BLOCK_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const SEMANTIC_BLOCK_BATCH_SIZE = 20;
+const SEMANTIC_BLOCK_MAX_INFLIGHT = 2;
+const SEMANTIC_BLOCK_PROMPT_MAX_CHARS = 4000;
+const SEMANTIC_BLOCK_TEXT_MAX_CHARS = 120;
+const SEMANTIC_BLOCK_FLUSH_DELAY_MS = 300;
+const SEMANTIC_BLOCK_SCAN_DELAY_MS = 80;
+const SEMANTIC_BLOCK_BATCH_CAP = SEMANTIC_BLOCK_BATCH_SIZE * 4;
+const SEMANTIC_BLOCK_STATS_STORAGE_KEY = "semanticBlockStats";
+const SEMANTIC_BLOCK_DEFAULT_INTENTS = ["剧透", "引战/人身攻击", "软广/推广"];
+const SEMANTIC_BLOCK_STYLE_ID = "better-xiaoheihe-semantic-block-style";
+const SEMANTIC_BLOCK_BAR_CLASS = "better-semantic-block-bar";
+const SEMANTIC_BLOCK_BLOCKED_CLASS = "better-semantic-blocked";
+// 内容脚本可用的 storage 探测（MV3/Firefox）。
+const SEMANTIC_BLOCK_COMMENT_ELEMENT_SELECTOR = [
+  ".better-comment-preview__item",
+  ".better-comment-preview__reply",
+  ".link-comment__comment-item",
+  ".comment-children-item"
+].join(", ");
+const SEMANTIC_BLOCK_COMMENT_TEXT_SELECTOR = [
+  ".better-comment-preview__text",
+  ".better-comment-preview__reply-text",
+  ".comment-item__content",
+  ".children-item__comment-content"
+].join(", ");
+const SEMANTIC_BLOCK_POST_ELEMENT_SELECTOR = [
+  'a.hb-cpt__bbs-list-content[href*="/app/bbs/link/"]',
+  'a.hb-cpt__bbs-content[href*="/app/bbs/link/"]'
+].join(", ");
+
+let semanticBlockConfig = {
+  enabled: false,
+  intents: [...SEMANTIC_BLOCK_DEFAULT_INTENTS],
+  posts: false
+};
+const semanticBlockResultCache = createLruCache(SEMANTIC_BLOCK_CACHE_LIMIT);
+const semanticBlockBatch = [];
+const semanticBlockPendingKeys = new Set();
+let semanticBlockInFlight = 0;
+let semanticBlockFlushTimer = null;
+let semanticBlockScanTimer = null;
+let semanticBlockPreviewHookBound = false;
+let semanticBlockMutationObserver = null;
+let semanticBlockInitBound = false;
+let semanticBlockScanning = false;
+let semanticBlockStats = { totalBlocked: 0, byIntent: {} };
+let semanticBlockStatsTimer = null;
+
+function normalizeSemanticBlockConfig(config = {}) {
+  const intents = (Array.isArray(config.intents) ? config.intents : [])
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  return {
+    enabled: config.enabled === true || config.enabled === "1" || config.enabled === "true",
+    intents: intents.length ? [...new Set(intents)] : [...SEMANTIC_BLOCK_DEFAULT_INTENTS],
+    posts: config.posts === true || config.posts === "1" || config.posts === "true"
+  };
+}
+
+// 供主会话注入配置（settings-state 注册与 UI 由主会话负责，此处只读配置）。
+function setSemanticBlockConfig(config) {
+  const nextConfig = normalizeSemanticBlockConfig({
+    ...semanticBlockConfig,
+    ...(config || {})
+  });
+  if (JSON.stringify(nextConfig) === JSON.stringify(semanticBlockConfig)) {
+    return semanticBlockConfig;
+  }
+  semanticBlockConfig = nextConfig;
+  scheduleSemanticBlockScan(50);
+  return semanticBlockConfig;
+}
+
+function getSemanticBlockStats() {
+  return {
+    totalBlocked: semanticBlockStats.totalBlocked,
+    byIntent: { ...semanticBlockStats.byIntent }
+  };
+}
+
+function hashSemanticBlockText(text) {
+  let hash = 5381;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash << 5) + hash + text.charCodeAt(i)) >>> 0;
+  }
+  return String(hash);
+}
+
+function getSemanticBlockCacheEntry(text) {
+  const key = hashSemanticBlockText(text);
+  const entry = lruCacheGet(semanticBlockResultCache, key);
+  if (!entry) {
+    return undefined;
+  }
+  if (Date.now() - entry.t > SEMANTIC_BLOCK_CACHE_TTL_MS) {
+    semanticBlockResultCache.delete(key);
+    return undefined;
+  }
+  return entry;
+}
+
+function setSemanticBlockCacheEntry(text, block, reason) {
+  lruCacheSet(semanticBlockResultCache, hashSemanticBlockText(text), {
+    t: Date.now(),
+    block: Boolean(block),
+    reason: String(reason || "").trim()
+  });
+}
+
+function normalizeSemanticBlockText(text) {
+  return String(text || "")
+    .replace(/\[cube_[^\]]+\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getSemanticBlockIntentLabel(reason) {
+  const normalizedReason = String(reason || "").trim();
+  if (!normalizedReason) {
+    return "其他";
+  }
+  const matched = semanticBlockConfig.intents.find((intent) => {
+    return normalizedReason.includes(intent) || intent.includes(normalizedReason);
+  });
+  return matched || normalizedReason;
+}
+
+function getSemanticBlockCommentId(element) {
+  return String(element?.getAttribute("data-comment-id") || element?.dataset?.commentId || "").trim();
+}
+
+function isSemanticBlockElementVisible(element) {
+  return Boolean(element?.isConnected) && element.style.display !== "none";
+}
+
+function collectSemanticBlockElements() {
+  const candidates = [];
+  document.querySelectorAll(SEMANTIC_BLOCK_COMMENT_ELEMENT_SELECTOR).forEach((element) => {
+    candidates.push({ element, kind: "comment" });
+  });
+  if (semanticBlockConfig.posts) {
+    document.querySelectorAll(SEMANTIC_BLOCK_POST_ELEMENT_SELECTOR).forEach((element) => {
+      candidates.push({ element, kind: "post" });
+    });
+  }
+  return candidates;
+}
+
+function extractSemanticBlockText(element, kind) {
+  if (kind === "post") {
+    const title = element.querySelector(".bbs-content__title")?.textContent || "";
+    const content = element.querySelector(".bbs-content__content")?.textContent || "";
+    return normalizeSemanticBlockText(`${title} ${content}`);
+  }
+  const textElement = element.querySelector(SEMANTIC_BLOCK_COMMENT_TEXT_SELECTOR);
+  return normalizeSemanticBlockText(textElement?.textContent || "");
+}
+
+function applySemanticBlockScan() {
+  if (semanticBlockScanning) {
+    return;
+  }
+  semanticBlockScanning = true;
+  try {
+    if (!semanticBlockConfig.enabled || !isAiConfigured()) {
+      semanticBlockBatch.length = 0;
+      return;
+    }
+    const pending = [];
+    collectSemanticBlockElements().forEach(({ element, kind }) => {
+      if (element.classList.contains(SEMANTIC_BLOCK_BLOCKED_CLASS)) {
+        return;
+      }
+      if (element.dataset.semanticBlockExpanded === "1") {
+        return;
+      }
+      if (!isSemanticBlockElementVisible(element)) {
+        return;
+      }
+      const text = extractSemanticBlockText(element, kind);
+      if (!text) {
+        return;
+      }
+      const cached = getSemanticBlockCacheEntry(text);
+      if (cached) {
+        if (cached.block) {
+          foldSemanticBlockComment(element, cached.reason);
+        }
+        return;
+      }
+      pending.push({ text, commentId: getSemanticBlockCommentId(element), kind, element });
+    });
+    if (pending.length) {
+      pushSemanticBlockBatch(pending);
+    }
+  } finally {
+    semanticBlockScanning = false;
+  }
+}
+
+function scheduleSemanticBlockScan(delay = SEMANTIC_BLOCK_SCAN_DELAY_MS) {
+  if (semanticBlockScanTimer) {
+    window.clearTimeout(semanticBlockScanTimer);
+  }
+  semanticBlockScanTimer = window.setTimeout(() => {
+    semanticBlockScanTimer = null;
+    applySemanticBlockScan();
+  }, delay);
+}
+
+function semanticBlockScanNow() {
+  scheduleSemanticBlockScan(0);
+}
+
+function pushSemanticBlockBatch(items) {
+  let added = 0;
+  for (const item of items) {
+    const key = hashSemanticBlockText(item.text);
+    if (semanticBlockPendingKeys.has(key)) {
+      continue;
+    }
+    if (semanticBlockBatch.length >= SEMANTIC_BLOCK_BATCH_CAP) {
+      break;
+    }
+    semanticBlockPendingKeys.add(key);
+    semanticBlockBatch.push(item);
+    added += 1;
+  }
+  if (!added) {
+    return;
+  }
+  // 满 20 条立即发送；不满则等渲染完成 300ms 后再发。
+  if (semanticBlockBatch.length >= SEMANTIC_BLOCK_BATCH_SIZE) {
+    flushSemanticBlockBatch();
+  } else {
+    scheduleSemanticBlockFlush(SEMANTIC_BLOCK_FLUSH_DELAY_MS);
+  }
+}
+
+function scheduleSemanticBlockFlush(delay) {
+  if (semanticBlockFlushTimer) {
+    window.clearTimeout(semanticBlockFlushTimer);
+  }
+  semanticBlockFlushTimer = window.setTimeout(() => {
+    semanticBlockFlushTimer = null;
+    flushSemanticBlockBatch();
+  }, delay);
+}
+
+function flushSemanticBlockBatch() {
+  if (!semanticBlockConfig.enabled || !isAiConfigured()) {
+    semanticBlockBatch.length = 0;
+    return;
+  }
+  if (semanticBlockInFlight >= SEMANTIC_BLOCK_MAX_INFLIGHT || !semanticBlockBatch.length) {
+    return;
+  }
+  const batch = semanticBlockBatch.splice(0, SEMANTIC_BLOCK_BATCH_SIZE);
+  if (batch.length) {
+    sendSemanticBlockBatch(batch);
+  }
+}
+
+function buildSemanticBlockMessages(batch) {
+  const system = [
+    "你是社区评论内容审核助手，负责判断评论是否需要按意图屏蔽。",
+    `被屏蔽意图：${semanticBlockConfig.intents.join("、")}`,
+    "对每条评论输出一个 JSON 数组元素：{\"i\":序号,\"block\":true或false,\"reason\":\"命中意图\"}。",
+    "block 为 true 时 reason 必须填命中意图之一；block 为 false 时 reason 填空字符串。",
+    "只输出 JSON 数组本身，不要输出解释、不要 Markdown 代码块。"
+  ].join("\n");
+
+  let budget = SEMANTIC_BLOCK_PROMPT_MAX_CHARS;
+  const lines = [];
+  const sent = [];
+  for (const item of batch) {
+    const text = String(item.text || "").replace(/\s+/g, " ").trim();
+    if (!text) {
+      continue;
+    }
+    const truncated = text.length > SEMANTIC_BLOCK_TEXT_MAX_CHARS
+      ? `${text.slice(0, SEMANTIC_BLOCK_TEXT_MAX_CHARS)}…`
+      : text;
+    const line = `${sent.length + 1}. ${truncated}`;
+    if (sent.length && budget - line.length < 0) {
+      break;
+    }
+    budget -= line.length;
+    lines.push(line);
+    sent.push(item);
+  }
+  if (!sent.length) {
+    return null;
+  }
+  return {
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: `请判断以下 ${sent.length} 条评论：\n${lines.join("\n")}` }
+    ],
+    sent
+  };
+}
+
+function parseSemanticBlockResponse(content, batch) {
+  const byIndex = {};
+  const raw = String(content || "");
+  const arrayMatch = raw.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
+    try {
+      const parsed = JSON.parse(arrayMatch[0]);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((entry) => {
+          const index = Number.parseInt(entry?.i, 10);
+          if (!Number.isFinite(index)) {
+            return;
+          }
+          byIndex[index] = {
+            block: entry?.block === true,
+            reason: String(entry?.reason || "").trim()
+          };
+        });
+      }
+    } catch {
+      // 坏行跳过，走行级兜底解析。
+    }
+  }
+  if (!Object.keys(byIndex).length) {
+    raw.split(/\r?\n/).forEach((line) => {
+      const match = line.match(/\{\s*"i"\s*:\s*(\d+)\s*,\s*"block"\s*:\s*(true|false)(?:\s*,\s*"reason"\s*:\s*"([^"]*)")?\s*\}/);
+      if (!match) {
+        return;
+      }
+      byIndex[Number.parseInt(match[1], 10)] = {
+        block: match[2] === "true",
+        reason: String(match[3] || "").trim()
+      };
+    });
+  }
+  const results = [];
+  batch.forEach((item, index) => {
+    const entry = byIndex[index + 1];
+    if (!entry) {
+      return;
+    }
+    results.push({ text: item.text, block: Boolean(entry.block), reason: entry.reason });
+  });
+  return results;
+}
+
+function sendSemanticBlockBatch(batch) {
+  const payload = buildSemanticBlockMessages(batch);
+  if (!payload) {
+    batch.forEach((item) => semanticBlockPendingKeys.delete(hashSemanticBlockText(item.text)));
+    return;
+  }
+  semanticBlockInFlight += 1;
+  requestAiChat(payload.messages, 0.1)
+    .then((answer) => {
+      const results = parseSemanticBlockResponse(answer, payload.sent);
+      applySemanticBlockResults(results);
+    })
+    .catch((error) => {
+      console.warn("[better-xiaoheihe] AI 语义屏蔽判定失败：", error?.message || error);
+    })
+    .finally(() => {
+      payload.sent.forEach((item) => semanticBlockPendingKeys.delete(hashSemanticBlockText(item.text)));
+      semanticBlockInFlight -= 1;
+      scheduleSemanticBlockFlush(0);
+    });
+}
+
+function applySemanticBlockResults(results) {
+  let blocked = false;
+  const intentCounts = {};
+  results.forEach((result) => {
+    setSemanticBlockCacheEntry(result.text, result.block, result.reason);
+    if (!result.block) {
+      return;
+    }
+    const label = getSemanticBlockIntentLabel(result.reason);
+    intentCounts[label] = (intentCounts[label] || 0) + 1;
+    blocked = true;
+  });
+  const intentEntries = Object.entries(intentCounts);
+  if (intentEntries.length) {
+    intentEntries.forEach(([label, count]) => {
+      semanticBlockStats.byIntent[label] = (semanticBlockStats.byIntent[label] || 0) + count;
+    });
+    semanticBlockStats.totalBlocked += intentEntries.reduce((sum, [, count]) => sum + count, 0);
+    persistSemanticBlockStats();
+  }
+  if (blocked) {
+    scheduleSemanticBlockScan(0);
+  }
+}
+
+function persistSemanticBlockStats() {
+  if (semanticBlockStatsTimer) {
+    window.clearTimeout(semanticBlockStatsTimer);
+  }
+  semanticBlockStatsTimer = window.setTimeout(() => {
+    semanticBlockStatsTimer = null;
+    try {
+      const storage = typeof chrome !== "undefined" ? chrome.storage?.local : null;
+      if (storage?.set) {
+        storage.set({ [SEMANTIC_BLOCK_STATS_STORAGE_KEY]: semanticBlockStats }, () => {});
+      }
+    } catch {
+      // 忽略 storage 写入异常。
+    }
+  }, 400);
+}
+
+function loadPersistedSemanticBlockStats() {
+  try {
+    const storage = typeof chrome !== "undefined" ? chrome.storage?.local : null;
+    if (!storage?.get) {
+      return;
+    }
+    storage.get([SEMANTIC_BLOCK_STATS_STORAGE_KEY], (result) => {
+      const saved = result?.[SEMANTIC_BLOCK_STATS_STORAGE_KEY];
+      if (!saved || typeof saved !== "object") {
+        return;
+      }
+      semanticBlockStats = {
+        totalBlocked: Math.max(0, Number.parseInt(saved.totalBlocked, 10) || 0),
+        byIntent: saved.byIntent && typeof saved.byIntent === "object" ? { ...saved.byIntent } : {}
+      };
+    });
+  } catch {
+    // 忽略读取异常。
+  }
+}
+
+function syncSemanticBlockRowHeight(element) {
+  const preview = element?.closest(".better-xiaoheihe-comment-preview");
+  if (preview) {
+    scheduleRowHeightSync(preview.closest(".better-xiaoheihe-feed-row"));
+  }
+}
+
+function updateSemanticBlockBarHint(bar) {
+  const hint = bar.querySelector(".better-semantic-block-bar__hint");
+  if (hint) {
+    hint.textContent = bar.dataset.expanded === "1" ? "点击收起" : "点击展开";
+  }
+}
+
+function toggleSemanticBlockBar(bar) {
+  const element = bar.nextElementSibling;
+  if (!element) {
+    return;
+  }
+  const isCollapsed = element.classList.contains(SEMANTIC_BLOCK_BLOCKED_CLASS);
+  if (isCollapsed) {
+    element.classList.remove(SEMANTIC_BLOCK_BLOCKED_CLASS);
+    element.dataset.semanticBlockExpanded = "1";
+    bar.dataset.expanded = "1";
+    bar.classList.add("is-expanded");
+  } else {
+    element.classList.add(SEMANTIC_BLOCK_BLOCKED_CLASS);
+    delete element.dataset.semanticBlockExpanded;
+    bar.dataset.expanded = "";
+    bar.classList.remove("is-expanded");
+  }
+  updateSemanticBlockBarHint(bar);
+  syncSemanticBlockRowHeight(element);
+}
+
+function createSemanticBlockBar(reason) {
+  const bar = document.createElement("div");
+  bar.className = SEMANTIC_BLOCK_BAR_CLASS;
+  bar.setAttribute("role", "button");
+  bar.setAttribute("tabindex", "0");
+  bar.setAttribute("aria-expanded", "false");
+  bar.dataset.reason = String(reason || "其他");
+
+  const label = document.createElement("span");
+  label.className = "better-semantic-block-bar__label";
+  label.textContent = `AI 语义屏蔽：${String(reason || "其他")}`;
+
+  const hint = document.createElement("span");
+  hint.className = "better-semantic-block-bar__hint";
+  hint.textContent = "点击展开";
+
+  bar.append(label, hint);
+  bar.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleSemanticBlockBar(bar);
+  });
+  bar.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggleSemanticBlockBar(bar);
+    }
+  });
+  return bar;
+}
+
+// 复用现有关键词屏蔽的折叠形态：命中即收起（display:none），折叠条标注原因并保留展开。
+function foldSemanticBlockComment(element, reason) {
+  if (element.classList.contains(SEMANTIC_BLOCK_BLOCKED_CLASS)) {
+    return;
+  }
+  const previousBar = element.previousElementSibling;
+  if (previousBar?.classList.contains(SEMANTIC_BLOCK_BAR_CLASS)) {
+    previousBar.dataset.reason = String(reason || "其他");
+    const label = previousBar.querySelector(".better-semantic-block-bar__label");
+    if (label) {
+      label.textContent = `AI 语义屏蔽：${String(reason || "其他")}`;
+    }
+  } else {
+    const bar = createSemanticBlockBar(reason);
+    element.insertAdjacentElement("beforebegin", bar);
+  }
+  element.classList.add(SEMANTIC_BLOCK_BLOCKED_CLASS);
+  syncSemanticBlockRowHeight(element);
+}
+
+function readSemanticBlockConfigFromValues(values = {}) {
+  const readKey = (...names) => {
+    for (const name of names) {
+      if (Object.prototype.hasOwnProperty.call(values, name)) {
+        return values[name];
+      }
+    }
+    return undefined;
+  };
+  return {
+    enabled: readKey("better-xiaoheihe-semantic-block-enabled", "semanticBlockEnabled"),
+    intents: readKey("better-xiaoheihe-semantic-block-intents", "semanticBlockIntents"),
+    posts: readKey("better-xiaoheihe-semantic-block-posts", "semanticBlockPosts")
+  };
+}
+
+function hasSemanticBlockConfigValue(config) {
+  return config.enabled !== undefined || config.intents !== undefined || config.posts !== undefined;
+}
+
+function loadSemanticBlockConfigFromSettings() {
+  requestLocalSettingsState().then((response) => {
+    if (!response?.ok) {
+      return;
+    }
+    const loaded = readSemanticBlockConfigFromValues(response.values || {});
+    if (hasSemanticBlockConfigValue(loaded)) {
+      setSemanticBlockConfig(loaded);
+    }
+  }).catch(() => {});
+}
+
+function injectSemanticBlockStyle() {
+  if (document.getElementById(SEMANTIC_BLOCK_STYLE_ID)) {
+    return;
+  }
+  const style = document.createElement("style");
+  style.id = SEMANTIC_BLOCK_STYLE_ID;
+  style.textContent = `
+    .better-semantic-block-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 4px 0;
+      padding: 6px 10px;
+      border: 1px dashed rgba(200, 160, 74, 0.55);
+      border-radius: 6px;
+      background: rgba(200, 160, 74, 0.08);
+      color: #b8860b;
+      font-size: 12px;
+      line-height: 1.4;
+      cursor: pointer;
+      user-select: none;
+      transition: background-color .15s ease, border-color .15s ease;
+    }
+    .better-semantic-block-bar:hover,
+    .better-semantic-block-bar.is-expanded {
+      background: rgba(200, 160, 74, 0.16);
+      border-color: rgba(200, 160, 74, 0.85);
+    }
+    .better-semantic-block-bar__label {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .better-semantic-block-bar__hint {
+      flex: 0 0 auto;
+      opacity: 0.7;
+    }
+    .better-comment-preview__item.better-semantic-blocked,
+    .better-comment-preview__reply.better-semantic-blocked,
+    .link-comment__comment-item.better-semantic-blocked,
+    .comment-children-item.better-semantic-blocked,
+    a.hb-cpt__bbs-list-content.better-semantic-blocked,
+    a.hb-cpt__bbs-content.better-semantic-blocked {
+      display: none !important;
+    }
+  `;
+  (document.head || document.documentElement).appendChild(style);
+}
+
+// 评论渲染完成钩子：包装 renderPreview，渲染后触发一次语义重扫（幂等，重复挂载守卫）。
+function installSemanticBlockPreviewHook() {
+  if (semanticBlockPreviewHookBound) {
+    return;
+  }
+  semanticBlockPreviewHookBound = true;
+  if (typeof renderPreview !== "function") {
+    return;
+  }
+  const originalRenderPreview = renderPreview;
+  renderPreview = function (preview, state) {
+    const result = originalRenderPreview(preview, state);
+    scheduleSemanticBlockScan(60);
+    return result;
+  };
+}
+
+// 兜底：监听原生评论/信息流 DOM 新增（链接页分页、首页信息流懒加载），重增强幂等。
+function installSemanticBlockMutationObserver() {
+  if (semanticBlockMutationObserver || typeof MutationObserver === "undefined") {
+    return;
+  }
+  const relevantSelector = [
+    SEMANTIC_BLOCK_COMMENT_ELEMENT_SELECTOR,
+    SEMANTIC_BLOCK_POST_ELEMENT_SELECTOR
+  ].join(", ");
+  semanticBlockMutationObserver = new MutationObserver((mutations) => {
+    if (!semanticBlockConfig.enabled) {
+      return;
+    }
+    const relevant = mutations.some((mutation) => {
+      return [...(mutation.addedNodes || [])].some((node) => {
+        if (node.nodeType !== 1) {
+          return false;
+        }
+        return node.matches?.(relevantSelector) || Boolean(node.querySelector?.(relevantSelector));
+      });
+    });
+    if (relevant) {
+      scheduleSemanticBlockScan(120);
+    }
+  });
+  semanticBlockMutationObserver.observe(document.documentElement, {
+    childList: true,
+    subtree: true
+  });
+}
+
+function initSemanticBlockFeature() {
+  if (semanticBlockInitBound) {
+    return;
+  }
+  semanticBlockInitBound = true;
+  try {
+    injectSemanticBlockStyle();
+  } catch {
+    // 忽略样式注入异常。
+  }
+  installSemanticBlockPreviewHook();
+  if (document.documentElement) {
+    installSemanticBlockMutationObserver();
+  }
+  loadSemanticBlockConfigFromSettings();
+  loadPersistedSemanticBlockStats();
+  // 本地设置变更（主会话保存语义屏蔽配置）与 AI 配置就绪后触发重扫。
+  window.addEventListener("better-xiaoheihe-local-settings-changed", (event) => {
+    let detail = {};
+    try {
+      detail = typeof event.detail === "string" ? JSON.parse(event.detail) : (event.detail || {});
+    } catch {
+      detail = {};
+    }
+    const loaded = readSemanticBlockConfigFromValues(detail?.values || {});
+    if (hasSemanticBlockConfigValue(loaded)) {
+      setSemanticBlockConfig(loaded);
+    }
+  });
+  window.addEventListener("better-xiaoheihe-ai-settings", () => {
+    scheduleSemanticBlockScan(0);
+  });
+}
+
+initSemanticBlockFeature();
+  // END src\content\ai-semantic-block.js
   // BEGIN src\content\read-later.js
 // 稍后读：信息流卡片一键收藏，通用设置中管理并导出 Markdown。
   const READ_LATER_MAX_ITEMS = 200;
@@ -15882,6 +17779,154 @@
     list.innerHTML = renderReadLaterListHtml(items);
   }
   // END src\content\read-later.js
+  // BEGIN src\content\history.js
+// 浏览足迹：自动记录浏览过的帖子详情（「我读过的」），并在设置面板「足迹」页聚合展示浏览历史与稍后读。
+// 本文件由 build-source-bundles.ps1 拼接进 src/content.js，共享 IIFE 顶层作用域。
+  const READING_HISTORY_MAX = 200;
+  const READING_HISTORY_REPEAT_GUARD_MS = 5000;
+
+  let lastRecordedHistoryKey = "";
+  let lastRecordedHistoryAt = 0;
+  let readingHistoryFilter = "";
+
+  function normalizeReadingHistoryItem(item = {}) {
+    return {
+      linkId: String(item?.linkId || ""),
+      title: String(item?.title || "").slice(0, 200),
+      url: String(item?.url || ""),
+      visitedAt: Number(item?.visitedAt || 0)
+    };
+  }
+
+  function readReadingHistory() {
+    return requestLocalSettingsState().then((response) => {
+      const items = response?.ok ? response.values?.[READING_HISTORY_STORAGE_KEY] : null;
+      return Array.isArray(items)
+        ? items.map(normalizeReadingHistoryItem).filter((item) => item.linkId)
+        : [];
+    });
+  }
+
+  function writeReadingHistory(items) {
+    saveLocalSettings({
+      [READING_HISTORY_STORAGE_KEY]: items.slice(0, READING_HISTORY_MAX)
+    });
+    return Promise.resolve();
+  }
+
+  function recordReadingHistory(item) {
+    const normalized = normalizeReadingHistoryItem(item);
+    if (!normalized.linkId) {
+      return Promise.resolve();
+    }
+    const now = Date.now();
+    const guardKey = String(normalized.linkId);
+    if (guardKey === lastRecordedHistoryKey && now - lastRecordedHistoryAt < READING_HISTORY_REPEAT_GUARD_MS) {
+      return Promise.resolve();
+    }
+    lastRecordedHistoryKey = guardKey;
+    lastRecordedHistoryAt = now;
+    return readReadingHistory().then((items) => {
+      const rest = items.filter((existing) => String(existing.linkId) !== guardKey);
+      rest.unshift(normalized);
+      return writeReadingHistory(rest);
+    });
+  }
+
+  // 当前页面是帖子详情页时记录浏览历史。从 URL 提取 linkId，标题取 document.title 去掉站点后缀。
+  function recordCurrentPageToHistory() {
+    const match = window.location.pathname.match(/\/app\/bbs\/link\/(\d+)/);
+    if (!match) {
+      return;
+    }
+    const linkId = match[1];
+    const rawTitle = (document.title || "").trim();
+    const title = rawTitle.split(/\s*[-_｜|—]\s*/)[0].trim() || linkId;
+    recordReadingHistory({
+      linkId,
+      title,
+      url: window.location.href,
+      visitedAt: Date.now()
+    });
+  }
+
+  function renderReadingHistoryListHtml(items) {
+    if (!items.length) {
+      return '<div class="better-settings__empty">暂无浏览记录</div>';
+    }
+    return items.map((item) => `
+      <div class="better-settings__read-later-item">
+        <a class="better-settings__read-later-link" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(item.title)}">${escapeHtml(item.title || item.linkId)}</a>
+        <span class="better-settings__read-later-time">${escapeHtml(new Date(item.visitedAt).toLocaleString("zh-CN", { hour12: false }))}</span>
+        <button class="better-settings__remove" type="button" data-history-remove="${escapeHtml(item.linkId)}" aria-label="删除">×</button>
+      </div>
+    `).join("");
+  }
+
+  function renderReadingHistorySettingsContent() {
+    return `
+      <div class="better-settings__section better-settings__read-later-section">
+        <div class="better-settings__section-title">浏览历史</div>
+        <div class="better-settings__desc">自动记录你浏览过的帖子详情，最多保留最近 ${READING_HISTORY_MAX} 条。</div>
+        <div class="better-settings__read-later-actions">
+          <input class="better-settings__input better-settings__history-search" type="search" placeholder="搜索浏览历史…" value="${escapeHtml(readingHistoryFilter)}">
+          <button class="better-settings__text-button better-settings__history-clear" type="button">清空历史</button>
+        </div>
+        <div class="better-settings__read-later-list" data-reading-history-list>加载中…</div>
+      </div>
+    `;
+  }
+
+  function renderFootprintPanelContent() {
+    return `
+      <div class="better-settings__section better-settings__ai-section">
+        <div class="better-settings__ai-header">
+          <div>
+            <div class="better-settings__ai-title">我的足迹</div>
+            <div class="better-settings__ai-subtitle">浏览历史与稍后读</div>
+          </div>
+        </div>
+        <div class="better-settings__ai-body">
+          ${renderReadingHistorySettingsContent()}
+          ${renderReadLaterSettingsContent()}
+        </div>
+      </div>
+    `;
+  }
+
+  function filterReadingHistoryItems(items) {
+    const keyword = readingHistoryFilter.trim().toLowerCase();
+    if (!keyword) {
+      return items;
+    }
+    return items.filter((item) => {
+      return item.title.toLowerCase().includes(keyword)
+        || item.linkId.includes(keyword)
+        || item.url.toLowerCase().includes(keyword);
+    });
+  }
+
+  async function refreshReadingHistoryList(panel) {
+    const list = panel?.querySelector("[data-reading-history-list]");
+    if (!list) {
+      return;
+    }
+    const items = await readReadingHistory();
+    list.innerHTML = renderReadingHistoryListHtml(filterReadingHistoryItems(items));
+  }
+
+  async function removeReadingHistoryItem(linkId) {
+    const items = await readReadingHistory();
+    const nextItems = items.filter((item) => String(item.linkId) !== String(linkId));
+    if (nextItems.length !== items.length) {
+      await writeReadingHistory(nextItems);
+    }
+  }
+
+  async function clearReadingHistory() {
+    await writeReadingHistory([]);
+  }
+  // END src\content\history.js
   // BEGIN src\content\comment-draft.js
 // 评论草稿箱：输入自动保存，意外刷新/关闭后自动恢复。
   function getCommentDraftKey(preview, form) {
@@ -15971,7 +18016,24 @@
       }, 500);
     });
 
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver((mutations) => {
+      // 只响应评论草稿表单自身或其容器的新增/移除/内容变化，忽略其余全站 DOM 变更。
+      const relevant = mutations.some((mutation) => {
+        const target = mutation.target instanceof Element
+          ? mutation.target
+          : mutation.target?.parentElement;
+        if (target?.closest(".better-comment-preview__reply-form")) {
+          return true;
+        }
+        return [...mutation.addedNodes, ...mutation.removedNodes].some((node) => (
+          node instanceof Element
+          && (node.matches(".better-comment-preview__reply-form")
+            || node.querySelector(".better-comment-preview__reply-form"))
+        ));
+      });
+      if (!relevant) {
+        return;
+      }
       window.clearTimeout(draftRestoreTimer);
       draftRestoreTimer = window.setTimeout(() => {
         document.querySelectorAll(".better-comment-preview__reply-form").forEach((form) => {
@@ -16012,6 +18074,8 @@
     const standaloneTabs = [
       SETTINGS_TABS.BLOCKED,
       SETTINGS_TABS.GENERAL,
+      SETTINGS_TABS.MODELS,
+      SETTINGS_TABS.FOOTPRINT,
       SETTINGS_TABS.AI,
       ...(AI_BOT_FEATURE_ENABLED ? [SETTINGS_TABS.AIBOT, SETTINGS_TABS.AISTATS, SETTINGS_TABS.AIBOT_LOGS] : [])
     ];
@@ -16134,7 +18198,13 @@
       apiKey: panel.querySelector(".better-settings__ai-api-key")?.value ?? aiSettings.apiKey,
       allowEmoji: panel.querySelector(".better-settings__ai-allow-emoji")?.checked ?? aiSettings.allowEmoji,
       autoPopup: panel.querySelector(".better-settings__ai-auto-popup")?.checked ?? aiSettings.autoPopup,
-      summaryPrompt: panel.querySelector(".better-settings__ai-summary-prompt")?.value ?? aiSettings.summaryPrompt
+      summaryPrompt: panel.querySelector(".better-settings__ai-summary-prompt")?.value ?? aiSettings.summaryPrompt,
+      postBrief: {
+        enabled: panel.querySelector(".better-settings__post-brief-enabled")?.checked ?? (aiSettings.postBrief?.enabled !== false)
+      },
+      dealCard: {
+        enabled: panel.querySelector(".better-settings__deal-card-enabled")?.checked ?? (aiSettings.dealCard?.enabled !== false)
+      }
     });
   }
 
@@ -16246,6 +18316,16 @@
     panel?.querySelectorAll(".better-settings__textarea").forEach(syncAutoHeightTextarea);
   }
 
+  function getAiProviderLabel(provider) {
+    const labels = {
+      [AI_PROVIDERS.OPENAI_COMPATIBLE]: "OpenAI Compatible",
+      [AI_PROVIDERS.OPENAI_RESPONSES]: "OpenAI Responses",
+      [AI_PROVIDERS.ANTHROPIC]: "Anthropic",
+      [AI_PROVIDERS.GEMINI]: "Gemini"
+    };
+    return labels[provider] || provider || "未配置";
+  }
+
   function renderAiProviderOptions() {
     const options = [
       [AI_PROVIDERS.OPENAI_COMPATIBLE, "OpenAI Compatible · Chat Completions"],
@@ -16309,46 +18389,10 @@
           </label>
         </div>
         <div class="better-settings__ai-body">
-          <details class="better-settings__collapsible-section" data-connection-config="ai"${uiState.aiConnectionConfigOpen ? " open" : ""}>
-            <summary class="better-settings__collapsible-summary">
-              <span class="better-settings__connection-title">接入配置 ${renderAiConnectionDot("ai", aiSettings)}</span>
-              <span class="better-settings__collapsible-indicator" aria-hidden="true"></span>
-            </summary>
-            <label class="better-settings__field">
-              <span class="better-settings__field-title">服务商类型</span>
-              <select class="better-settings__select better-settings__ai-provider">
-                ${renderAiProviderOptions()}
-              </select>
-            </label>
-            <label class="better-settings__field">
-              <span class="better-settings__field-title">Base URL</span>
-              <input class="better-settings__text-input better-settings__ai-base-url" name="better-xiaoheihe-ai-base-url" type="url" value="${escapeHtml(aiSettings.baseUrl)}" autocomplete="section-better-xiaoheihe-ai username" placeholder="https://api.openai.com/v1">
-            </label>
-            <label class="better-settings__field">
-              <span class="better-settings__field-title">
-                模型
-                <button class="better-settings__text-button better-settings__ai-fetch-models" type="button">拉取模型</button>
-              </span>
-              <div class="better-settings__ai-model-combobox">
-                <input class="better-settings__text-input better-settings__ai-model" name="better-xiaoheihe-ai-model" type="text" value="${escapeHtml(aiSettings.model)}" autocomplete="off" placeholder="gpt-4.1-mini">
-                <button class="better-settings__ai-model-dropdown" type="button" aria-label="选择已拉取模型" aria-expanded="false" disabled></button>
-                <div class="better-settings__ai-model-menu" role="listbox" hidden></div>
-              </div>
-            </label>
-            <label class="better-settings__field">
-              <span class="better-settings__field-title">API Key</span>
-              <div class="better-settings__connection-input">
-                <div class="better-settings__secret-input">
-                  <input class="better-settings__text-input better-settings__ai-api-key" name="better-xiaoheihe-ai-api-key" type="password" value="${escapeHtml(aiSettings.apiKey)}" autocomplete="section-better-xiaoheihe-ai current-password" placeholder="sk-...">
-                  <button class="better-settings__secret-toggle" type="button" data-secret-input=".better-settings__ai-api-key" aria-label="显示 API Key" aria-pressed="false">显示</button>
-                </div>
-                <button class="better-settings__primary better-settings__connection-test better-settings__ai-test" type="button">测试连通</button>
-              </div>
-            </label>
-            <div class="better-settings__config-actions">
-              <span class="better-settings__message" role="status">${isAiConfigured() ? "已配置" : "请填写 Base URL 和模型"}</span>
-            </div>
-          </details>
+          <div class="better-settings__current-provider">
+            <span class="better-settings__current-provider-text">当前服务商：${escapeHtml(getAiProviderLabel(aiSettings.provider))} · ${escapeHtml(aiSettings.model || "未设置模型")}</span>
+            <button class="better-settings__text-button better-settings__goto-models" type="button">在「AI 模型」页更改</button>
+          </div>
           <details class="better-settings__collapsible-section better-settings__ai-prompt-section" data-ai-prompt-section${uiState.aiPromptSettingsOpen ? " open" : ""}>
             <summary class="better-settings__collapsible-summary better-settings__ai-prompt-summary">
               <span class="better-settings__connection-title">提示词设置</span>
@@ -16390,6 +18434,81 @@
               </div>
             </div>
           </details>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderAiModelsPanelContent() {
+    return `
+      <div class="better-settings__section better-settings__ai-section">
+        <div class="better-settings__ai-header">
+          <div>
+            <div class="better-settings__ai-title">AI 模型</div>
+            <div class="better-settings__ai-subtitle">AI 总结 / 导读 / 省钱助手等 AI 功能共用的模型来源</div>
+          </div>
+        </div>
+        <div class="better-settings__ai-body">
+          <details class="better-settings__collapsible-section" data-connection-config="ai"${uiState.aiConnectionConfigOpen ? " open" : ""}>
+            <summary class="better-settings__collapsible-summary">
+              <span class="better-settings__connection-title">自定义服务商 ${renderAiConnectionDot("ai", aiSettings)}</span>
+              <span class="better-settings__collapsible-indicator" aria-hidden="true"></span>
+            </summary>
+            <label class="better-settings__field">
+              <span class="better-settings__field-title">服务商类型</span>
+              <select class="better-settings__select better-settings__ai-provider">
+                ${renderAiProviderOptions()}
+              </select>
+            </label>
+            <label class="better-settings__field">
+              <span class="better-settings__field-title">Base URL</span>
+              <input class="better-settings__text-input better-settings__ai-base-url" name="better-xiaoheihe-ai-base-url" type="url" value="${escapeHtml(aiSettings.baseUrl)}" autocomplete="section-better-xiaoheihe-ai username" placeholder="https://api.openai.com/v1">
+            </label>
+            <label class="better-settings__field">
+              <span class="better-settings__field-title">
+                模型
+                <button class="better-settings__text-button better-settings__ai-fetch-models" type="button">拉取模型</button>
+              </span>
+              <div class="better-settings__ai-model-combobox">
+                <input class="better-settings__text-input better-settings__ai-model" name="better-xiaoheihe-ai-model" type="text" value="${escapeHtml(aiSettings.model)}" autocomplete="off" placeholder="gpt-4.1-mini">
+                <button class="better-settings__ai-model-dropdown" type="button" aria-label="选择已拉取模型" aria-expanded="false" disabled></button>
+                <div class="better-settings__ai-model-menu" role="listbox" hidden></div>
+              </div>
+            </label>
+            <label class="better-settings__field">
+              <span class="better-settings__field-title">API Key</span>
+              <div class="better-settings__connection-input">
+                <div class="better-settings__secret-input">
+                  <input class="better-settings__text-input better-settings__ai-api-key" name="better-xiaoheihe-ai-api-key" type="password" value="${escapeHtml(aiSettings.apiKey)}" autocomplete="section-better-xiaoheihe-ai current-password" placeholder="sk-...">
+                  <button class="better-settings__secret-toggle" type="button" data-secret-input=".better-settings__ai-api-key" aria-label="显示 API Key" aria-pressed="false">显示</button>
+                </div>
+                <button class="better-settings__primary better-settings__connection-test better-settings__ai-test" type="button">测试连通</button>
+              </div>
+            </label>
+            <div class="better-settings__config-actions">
+              <span class="better-settings__message" role="status">${isAiConfigured() ? "已配置" : "请填写 Base URL 和模型"}</span>
+            </div>
+          </details>
+          <div class="better-settings__section better-settings__ai-feature-section">
+            <div class="better-settings__section-title">AI 增强功能</div>
+            <div class="better-settings__desc">这些功能共用上方选择的模型，默认开启。</div>
+            <label class="better-settings__ai-prompt-option">
+              <span class="better-settings__ai-prompt-option-copy">
+                <span class="better-settings__ai-prompt-option-title">长帖 AI 导读</span>
+                <span class="better-settings__ai-prompt-option-desc">长帖标题旁一键生成结论与要点</span>
+              </span>
+              <input class="better-settings__post-brief-enabled" type="checkbox"${(aiSettings.postBrief?.enabled !== false) ? " checked" : ""}>
+              <span class="better-settings__ai-prompt-option-switch" aria-hidden="true"><span></span></span>
+            </label>
+            <label class="better-settings__ai-prompt-option">
+              <span class="better-settings__ai-prompt-option-copy">
+                <span class="better-settings__ai-prompt-option-title">促销帖省钱助手</span>
+                <span class="better-settings__ai-prompt-option-desc">自动解析限免/折扣帖并对比史低</span>
+              </span>
+              <input class="better-settings__deal-card-enabled" type="checkbox"${(aiSettings.dealCard?.enabled !== false) ? " checked" : ""}>
+              <span class="better-settings__ai-prompt-option-switch" aria-hidden="true"><span></span></span>
+            </label>
+          </div>
         </div>
       </div>
     `;
@@ -17681,6 +19800,46 @@
   // BEGIN src\content\settings-shell.js
 // 设置面板整体内容渲染。
 // 本文件由上一级模块继续等价拆分而来，请通过 scripts/build-source-bundles.ps1 重新生成入口文件。
+  let semanticBlockUiState = {
+    enabled: false,
+    intents: SEMANTIC_BLOCK_DEFAULT_INTENTS.slice(),
+    posts: false,
+    totalBlocked: 0
+  };
+
+  function readSemanticBlockUiFromValues(values = {}) {
+    const rawEnabled = values[SEMANTIC_BLOCK_ENABLED_STORAGE_KEY];
+    const rawIntents = values[SEMANTIC_BLOCK_INTENTS_STORAGE_KEY];
+    const rawPosts = values[SEMANTIC_BLOCK_POSTS_STORAGE_KEY];
+    const intents = Array.isArray(rawIntents)
+      ? rawIntents.map((item) => String(item).trim()).filter(Boolean)
+      : String(rawIntents || "").split(/[\n,，;；]+/).map((item) => item.trim()).filter(Boolean);
+    return {
+      enabled: rawEnabled === true || rawEnabled === "true" || rawEnabled === "1",
+      intents: intents.length ? intents : SEMANTIC_BLOCK_DEFAULT_INTENTS.slice(),
+      posts: rawPosts === true || rawPosts === "true" || rawPosts === "1"
+    };
+  }
+
+  function loadSemanticBlockUiState() {
+    return requestLocalSettingsState().then((response) => {
+      if (response?.ok) {
+        semanticBlockUiState = {
+          ...readSemanticBlockUiFromValues(response.values || {}),
+          totalBlocked: getSemanticBlockStats().totalBlocked
+        };
+      }
+      return semanticBlockUiState;
+    });
+  }
+
+  function refreshSemanticBlockStats(panel) {
+    const stats = panel?.querySelector("[data-semantic-block-stats]");
+    if (stats) {
+      stats.textContent = String(getSemanticBlockStats().totalBlocked);
+    }
+  }
+
   function renderBlockedSettingsPanelContent() {
     const activeScope = normalizeBlockedKeywordScope(activeBlockedKeywordScope);
     const visibleBlockedKeywords = blockedKeywords.filter((item) => normalizeBlockedKeywordScope(item.scope) === activeScope);
@@ -17732,6 +19891,32 @@
           <button class="better-settings__add" type="submit">添加</button>
         </form>
         ${listHtml}
+      </div>
+      <div class="better-settings__section better-settings__semantic-block-section">
+        <div class="better-settings__section-title">AI 语义屏蔽</div>
+        <div class="better-settings__desc">用 AI 识别剧透、引战、软广等内容并自动折叠，弥补关键词屏蔽的不足。会消耗 AI 调用量，建议配合「AI 模型」页的内置 Gemini 本地模型使用。</div>
+        <div class="better-settings__level-row">
+          <span class="better-settings__section-title">启用语义屏蔽</span>
+          <label class="better-settings__ai-master-toggle" title="${semanticBlockUiState.enabled ? "关闭" : "开启"}AI 语义屏蔽">
+            <input class="better-settings__semantic-block-enabled" type="checkbox" aria-label="AI 语义屏蔽"${semanticBlockUiState.enabled ? " checked" : ""}>
+            <span class="better-settings__ai-master-control" aria-hidden="true">
+              <span class="better-settings__ai-status${semanticBlockUiState.enabled ? " is-on" : ""}">${semanticBlockUiState.enabled ? "已开启" : "未开启"}</span>
+              <span class="better-settings__ai-master-track">
+                <span class="better-settings__ai-master-thumb"></span>
+              </span>
+            </span>
+          </label>
+        </div>
+        <label class="better-settings__field">
+          <span class="better-settings__field-title">屏蔽意图（每行一个）</span>
+          <textarea class="better-settings__textarea better-settings__semantic-block-intents" placeholder="例如：剧透">${escapeHtml(semanticBlockUiState.intents.join("\n"))}</textarea>
+        </label>
+        <label class="better-settings__rule-toggle">
+          <input class="better-settings__semantic-block-posts" type="checkbox"${semanticBlockUiState.posts ? " checked" : ""}>
+          <span class="better-settings__rule-toggle-switch" aria-hidden="true"></span>
+          <span class="better-settings__rule-toggle-text">同时屏蔽帖子（默认只屏蔽评论）</span>
+        </label>
+        <div class="better-settings__desc">已累计屏蔽：<span data-semantic-block-stats>${escapeHtml(semanticBlockUiState.totalBlocked)}</span> 条</div>
       </div>
     `;
   }
@@ -17806,7 +19991,6 @@
         <div class="better-settings__desc">信息流标题和评论正文命中关键词时自动高亮；多个关键词可用逗号、空格或换行分隔。</div>
         <textarea class="better-settings__textarea better-settings__highlight-keywords" placeholder="例如：折扣 攻略 避雷">${escapeHtml(highlightKeywords.join("\n"))}</textarea>
       </div>
-      ${renderReadLaterSettingsContent()}
         </div>
       </details>
 
@@ -17995,13 +20179,19 @@
       </div>
       <div class="better-settings__tabs" role="tablist" aria-label="设置分类">
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.GENERAL}" aria-selected="${activeSettingsTab === SETTINGS_TABS.GENERAL ? "true" : "false"}">通用</button>
+        <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.FOOTPRINT}" aria-selected="${activeSettingsTab === SETTINGS_TABS.FOOTPRINT ? "true" : "false"}">足迹</button>
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.BLOCKED}" aria-selected="${activeSettingsTab === SETTINGS_TABS.BLOCKED ? "true" : "false"}">屏蔽</button>
+        <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.MODELS}" aria-selected="${activeSettingsTab === SETTINGS_TABS.MODELS ? "true" : "false"}">AI 模型</button>
         <button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AI}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AI ? "true" : "false"}">AI 总结</button>
         ${AI_BOT_FEATURE_ENABLED ? `<button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AIBOT}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AIBOT ? "true" : "false"}">AI Bot</button>` : ""}
         ${AI_BOT_FEATURE_ENABLED ? `<button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AISTATS}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AISTATS ? "true" : "false"}">AI 统计</button>` : ""}
         ${AI_BOT_FEATURE_ENABLED ? `<button class="better-settings__tab" type="button" role="tab" data-settings-tab="${SETTINGS_TABS.AIBOT_LOGS}" aria-selected="${activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS ? "true" : "false"}">运行日志</button>` : ""}
       </div>
-      ${activeSettingsTab === SETTINGS_TABS.AI
+      ${activeSettingsTab === SETTINGS_TABS.MODELS
+        ? renderAiModelsPanelContent()
+        : (activeSettingsTab === SETTINGS_TABS.FOOTPRINT
+        ? renderFootprintPanelContent()
+        : (activeSettingsTab === SETTINGS_TABS.AI
         ? renderAiSettingsPanelContent()
         : (activeSettingsTab === SETTINGS_TABS.GENERAL
           ? renderFeedLayoutSettingsPanelContent()
@@ -18009,7 +20199,7 @@
             ? renderAiBotSettingsPanelContent()
             : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS
               ? renderAiBotLogsPanelContent()
-              : (activeSettingsTab === SETTINGS_TABS.AISTATS ? renderAiBotStatsPanelContent() : renderBlockedSettingsPanelContent()))))}
+              : (activeSettingsTab === SETTINGS_TABS.AISTATS ? renderAiBotStatsPanelContent() : renderBlockedSettingsPanelContent()))))))}
     `;
     if (activeSettingsTab === SETTINGS_TABS.GENERAL) {
       bindFeedLayoutRangeInputs(panel);
@@ -18029,9 +20219,21 @@
       });
     }
     syncSettingsAutoHeightTextareas(panel);
-    if (activeSettingsTab === SETTINGS_TABS.AI) {
+    if (activeSettingsTab === SETTINGS_TABS.BLOCKED) {
+      loadSemanticBlockUiState().then(() => {
+        renderSettingsPanel();
+      });
+    }
+    if (activeSettingsTab === SETTINGS_TABS.FOOTPRINT) {
+      refreshReadingHistoryList(panel);
+      refreshReadLaterList(panel);
+    }
+    if (activeSettingsTab === SETTINGS_TABS.MODELS) {
       syncAiConnectionDot("ai", aiSettings);
       loadCachedAiModelOptions(panel);
+    }
+    if (activeSettingsTab === SETTINGS_TABS.AI) {
+      syncAiConnectionDot("ai", aiSettings);
     }
     if (activeSettingsTab === SETTINGS_TABS.AISTATS) {
       refreshAiStatsHistoryLists(panel);
@@ -18082,7 +20284,7 @@
     const body = document.createElement("div");
     body.className = "better-settings__changelog-body";
     if (content) {
-      body.appendChild(renderMarkdownBlock(String(content).split("\n")));
+      body.innerHTML = renderMarkdownBlock(String(content).split("\n"));
     } else {
       body.textContent = "暂无更新内容说明";
     }
@@ -18996,6 +21198,18 @@
         return;
       }
 
+      const historyClearButton = event.target.closest(".better-settings__history-clear");
+      if (historyClearButton && panel.contains(historyClearButton)) {
+        clearReadingHistory().then(() => refreshReadingHistoryList(panel));
+        return;
+      }
+
+      const historyRemoveButton = event.target.closest("[data-history-remove]");
+      if (historyRemoveButton && panel.contains(historyRemoveButton)) {
+        removeReadingHistoryItem(historyRemoveButton.dataset.historyRemove).then(() => refreshReadingHistoryList(panel));
+        return;
+      }
+
       const mentionNotifyToggleButton = event.target.closest(".better-settings__mention-notify-toggle");
       if (mentionNotifyToggleButton && panel.contains(mentionNotifyToggleButton)) {
         const nextEnabled = !mentionNotifySettings.enabled;
@@ -19123,6 +21337,12 @@
       const testButton = event.target.closest(".better-settings__ai-test");
       if (testButton && panel.contains(testButton)) {
         testAiSettingsFromPanel(panel, testButton);
+      }
+
+      const gotoModelsButton = event.target.closest(".better-settings__goto-models");
+      if (gotoModelsButton && panel.contains(gotoModelsButton)) {
+        setActiveSettingsTab(SETTINGS_TABS.MODELS);
+        return;
       }
 
       const fetchModelsButton = event.target.closest(".better-settings__ai-fetch-models");
@@ -19269,8 +21489,31 @@
         return;
       }
 
-      if (event.target.matches(".better-settings__ai-enabled, .better-settings__ai-allow-emoji, .better-settings__ai-auto-popup")) {
+      if (event.target.matches(".better-settings__ai-enabled, .better-settings__ai-allow-emoji, .better-settings__ai-auto-popup, .better-settings__post-brief-enabled, .better-settings__deal-card-enabled")) {
         saveAiSettingsFromPanel(panel);
+        return;
+      }
+
+      if (event.target.matches(".better-settings__history-search")) {
+        readingHistoryFilter = event.target.value || "";
+        refreshReadingHistoryList(panel);
+        return;
+      }
+
+      if (event.target.matches(".better-settings__semantic-block-enabled, .better-settings__semantic-block-posts")) {
+        const enabled = panel.querySelector(".better-settings__semantic-block-enabled")?.checked === true;
+        const posts = panel.querySelector(".better-settings__semantic-block-posts")?.checked === true;
+        saveLocalSettings({
+          [SEMANTIC_BLOCK_ENABLED_STORAGE_KEY]: enabled,
+          [SEMANTIC_BLOCK_POSTS_STORAGE_KEY]: posts
+        });
+        return;
+      }
+
+      if (event.target.matches(".better-settings__semantic-block-intents")) {
+        saveLocalSettings({
+          [SEMANTIC_BLOCK_INTENTS_STORAGE_KEY]: normalizeKeywordList(event.target.value)
+        });
         return;
       }
 
@@ -19470,7 +21713,16 @@
     }
 
     window.__betterXiaoheiheSettingsResizeBound = true;
-    window.addEventListener("resize", repositionSettingsPanelIfOpen);
+    let resizeRaf = 0;
+    window.addEventListener("resize", () => {
+      if (resizeRaf) {
+        return;
+      }
+      resizeRaf = window.requestAnimationFrame(() => {
+        resizeRaf = 0;
+        repositionSettingsPanelIfOpen();
+      });
+    }, { passive: true });
   }
 
   function toggleSettingsPanel(button) {
@@ -19513,7 +21765,7 @@
     button.setAttribute("aria-expanded", "true");
     renderSettingsPanel();
     positionSettingsPanel(panel, button);
-    panel.querySelector(activeSettingsTab === SETTINGS_TABS.AI ? ".better-settings__ai-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT ? ".better-settings__ai-bot-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS ? ".better-settings__ai-bot-refresh-logs" : (activeSettingsTab === SETTINGS_TABS.GENERAL ? ".better-settings__layout-total-range" : ".better-settings__input"))))?.focus();
+    panel.querySelector(activeSettingsTab === SETTINGS_TABS.FOOTPRINT ? ".better-settings__history-search" : (activeSettingsTab === SETTINGS_TABS.MODELS ? ".better-settings__ai-base-url" : (activeSettingsTab === SETTINGS_TABS.AI ? ".better-settings__ai-summary-prompt" : (activeSettingsTab === SETTINGS_TABS.AIBOT ? ".better-settings__ai-bot-base-url" : (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS ? ".better-settings__ai-bot-refresh-logs" : (activeSettingsTab === SETTINGS_TABS.GENERAL ? ".better-settings__layout-total-range" : ".better-settings__input"))))))?.focus();
     if (activeSettingsTab === SETTINGS_TABS.AIBOT_LOGS || activeSettingsTab === SETTINGS_TABS.AISTATS) {
       startAiBotLogAutoRefresh();
     } else {
@@ -19611,16 +21863,23 @@
         <div class="better-message-popover__state">点击刷新查看收藏</div>
       </div>
     `;
+    let favoritePopoverScrollRaf = 0;
     popover.querySelector(".better-message-popover__body")?.addEventListener("scroll", (event) => {
-      const body = event.currentTarget;
-      if (
-        favoritePopoverState.hasMore
-        && !favoritePopoverState.loading
-        && body.scrollTop + body.clientHeight >= body.scrollHeight - 80
-      ) {
-        fetchAndRenderFavouritePosts({ append: true });
+      if (favoritePopoverScrollRaf) {
+        return;
       }
-    });
+      const body = event.currentTarget;
+      favoritePopoverScrollRaf = window.requestAnimationFrame(() => {
+        favoritePopoverScrollRaf = 0;
+        if (
+          favoritePopoverState.hasMore
+          && !favoritePopoverState.loading
+          && body.scrollTop + body.clientHeight >= body.scrollHeight - 80
+        ) {
+          fetchAndRenderFavouritePosts({ append: true });
+        }
+      });
+    }, { passive: true });
     bindHeaderPopoverInteractions(popover);
     document.body.appendChild(popover);
     return popover;
@@ -19662,17 +21921,24 @@
         setMessagePopoverTab(tab.dataset.messageTab || "reply");
       });
     });
+    let messagePopoverScrollRaf = 0;
     popover.querySelector(".better-message-popover__body")?.addEventListener("scroll", (event) => {
+      if (messagePopoverScrollRaf) {
+        return;
+      }
       const body = event.currentTarget;
       const state = getActiveMessageTabState();
-      if (
-        state.hasMore
-        && !state.loading
-        && body.scrollTop + body.clientHeight >= body.scrollHeight - 80
-      ) {
-        fetchAndRenderReplyMessages({ append: true });
-      }
-    });
+      messagePopoverScrollRaf = window.requestAnimationFrame(() => {
+        messagePopoverScrollRaf = 0;
+        if (
+          state.hasMore
+          && !state.loading
+          && body.scrollTop + body.clientHeight >= body.scrollHeight - 80
+        ) {
+          fetchAndRenderReplyMessages({ append: true });
+        }
+      });
+    }, { passive: true });
     bindHeaderPopoverInteractions(popover);
     document.body.appendChild(popover);
     return popover;
@@ -20313,13 +22579,20 @@
       }
       closeMessagePopover();
     }, true);
+    let messagePopoverResizeRaf = 0;
     window.addEventListener("resize", () => {
-      const popover = document.querySelector(`.${MESSAGE_POPOVER_CLASS}`);
-      const button = document.querySelector(`.${HEADER_MESSAGE_CLASS}`);
-      if (popover && button && !popover.hidden) {
-        positionMessagePopover(button, popover);
+      if (messagePopoverResizeRaf) {
+        return;
       }
-    });
+      messagePopoverResizeRaf = window.requestAnimationFrame(() => {
+        messagePopoverResizeRaf = 0;
+        const popover = document.querySelector(`.${MESSAGE_POPOVER_CLASS}`);
+        const button = document.querySelector(`.${HEADER_MESSAGE_CLASS}`);
+        if (popover && button && !popover.hidden) {
+          positionMessagePopover(button, popover);
+        }
+      });
+    }, { passive: true });
   }
 
   function toggleMessagePopover(button) {
@@ -20361,13 +22634,20 @@
       }
       closeFavoritePopover();
     }, true);
+    let favoritePopoverResizeRaf = 0;
     window.addEventListener("resize", () => {
-      const popover = document.querySelector(`.${FAVORITE_POPOVER_CLASS}`);
-      const button = document.querySelector(`.${FAVORITE_ENTRY_CLASS}`);
-      if (popover && button && !popover.hidden) {
-        positionFavoritePopover(button, popover);
+      if (favoritePopoverResizeRaf) {
+        return;
       }
-    });
+      favoritePopoverResizeRaf = window.requestAnimationFrame(() => {
+        favoritePopoverResizeRaf = 0;
+        const popover = document.querySelector(`.${FAVORITE_POPOVER_CLASS}`);
+        const button = document.querySelector(`.${FAVORITE_ENTRY_CLASS}`);
+        if (popover && button && !popover.hidden) {
+          positionFavoritePopover(button, popover);
+        }
+      });
+    }, { passive: true });
   }
 
   function toggleFavoritePopover(button) {
@@ -21199,12 +23479,13 @@
     removeRightContent();
     if (isLinkPage()) {
       addFilterToBbsLink();
+      recordCurrentPageToHistory();
     } else {
       enhanceFeed();
       if (wasLinkPage && savedScrollY !== null) {
         const targetY = savedScrollY;
         savedScrollY = null;
-        window.requestAnimationFrame(() => {
+        nativeRequestAnimationFrame(() => {
           window.scrollTo(0, targetY);
         });
       }
@@ -21218,17 +23499,23 @@
     }
 
     scheduled = true;
-    window.requestAnimationFrame(() => {
-      scheduled = false;
-      handlingPage = true;
-      handlePage();
-      handlingPage = false;
-    });
+    if (handlePageTimer) {
+      nativeClearTimeout(handlePageTimer);
+    }
+    handlePageTimer = nativeSetTimeout(() => {
+      handlePageTimer = null;
+      nativeRequestAnimationFrame(() => {
+        scheduled = false;
+        handlingPage = true;
+        handlePage();
+        handlingPage = false;
+      });
+    }, 200);
   }
 
   function scheduleHandlePageAfterRoute() {
-    window.setTimeout(scheduleHandlePage, 0);
-    window.setTimeout(scheduleHandlePage, 120);
+    nativeSetTimeout(scheduleHandlePage, 0);
+    nativeSetTimeout(scheduleHandlePage, 120);
   }
 
   function scheduleLinkPageFilterRefresh() {
@@ -21237,18 +23524,41 @@
     }
 
     if (linkPageFilterRefreshTimer) {
-      window.clearTimeout(linkPageFilterRefreshTimer);
+      nativeClearTimeout(linkPageFilterRefreshTimer);
     }
-    window.requestAnimationFrame(updateLinkPageFilterControls);
-    linkPageFilterRefreshTimer = window.setTimeout(() => {
+    if (!linkPageFilterRefreshRaf) {
+      linkPageFilterRefreshRaf = nativeRequestAnimationFrame(() => {
+        linkPageFilterRefreshRaf = 0;
+        updateLinkPageFilterControls();
+      });
+    }
+    linkPageFilterRefreshTimer = nativeSetTimeout(() => {
       linkPageFilterRefreshTimer = null;
       ensureLinkPageFilterControls();
       updateLinkPageFilterControls();
     }, 160);
   }
 
+  // 扩展自身插入的 DOM：所有容器统一使用 better- 类前缀或 data-better-* 属性标记。
+  // 观察器据此排除自触发，避免扩展改动 DOM 引发整页重增强。
+  const EXTENSION_OWNED_SELECTOR = "[class*='better-'], [data-better-]";
+
+  function isExtensionOwnedElement(node) {
+    return Boolean(node
+      && typeof node.matches === "function"
+      && (node.matches(EXTENSION_OWNED_SELECTOR)
+        || (typeof node.closest === "function" && node.closest(EXTENSION_OWNED_SELECTOR))));
+  }
+
+  function mutationNodesAreExtensionOwned(mutation) {
+    const changedNodes = [...mutation.addedNodes, ...mutation.removedNodes];
+    return changedNodes.length > 0
+      && changedNodes.every((node) => !(node instanceof Element) || isExtensionOwnedElement(node));
+  }
+
   function mutationNodeMatches(node, selector) {
     return node?.nodeType === Node.ELEMENT_NODE
+      && !isExtensionOwnedElement(node)
       && (node.matches(selector) || Boolean(node.querySelector(selector)));
   }
 
@@ -21256,6 +23566,9 @@
     const target = mutation.target?.nodeType === Node.ELEMENT_NODE
       ? mutation.target
       : mutation.target?.parentElement;
+    if (isExtensionOwnedElement(target)) {
+      return false;
+    }
     return mutationNodeMatches(target, selector);
   }
 
@@ -21275,6 +23588,9 @@
     ].join(', ');
 
     return mutations.some((mutation) => {
+      if (mutationNodesAreExtensionOwned(mutation)) {
+        return false;
+      }
       if (
         mutationTargetMatches(mutation, commentStructureSelector)
         || mutationTargetMatches(mutation, setupStructureSelector)
@@ -21291,17 +23607,19 @@
   }
 
   function shouldRefreshHomePageForMutations(mutations) {
-    const homeStructureSelector = [
-      FEED_ITEM_SELECTOR,
-      `.${ROW_CLASS}`,
-      ".hb-bbs-home",
-      ".bbs-home__content-list",
-      ".bbs-home__content-item"
-    ].join(", ");
-
+    // 只看“信息流帖子”特征（FEED_ITEM_SELECTOR）。
+    // 注意：不能再用 isExtensionOwnedElement 排除——帖子被移入 .better-xiaoheihe-feed-row 后
+    // closest('[class*="better-"]') 会把它误判为扩展自有，导致信息流懒加载的新帖子不触发增强，
+    // 评论预览栏时有时无。enhanceFeedItem 本身有幂等守卫（item.closest(ROW_CLASS)），重复触发无害。
     return mutations.some((mutation) => {
+      if (mutation.type !== "childList") {
+        return false;
+      }
       const changedNodes = [...mutation.addedNodes, ...mutation.removedNodes];
-      return changedNodes.some((node) => mutationNodeMatches(node, homeStructureSelector));
+      return changedNodes.some((node) => (
+        node instanceof Element
+        && (node.matches(FEED_ITEM_SELECTOR) || node.querySelector(FEED_ITEM_SELECTOR))
+      ));
     });
   }
 
@@ -21611,7 +23929,7 @@
       }
 
       if (!replyEmojiScrollRaf) {
-        replyEmojiScrollRaf = window.requestAnimationFrame(handleReplyEmojiScroll);
+        replyEmojiScrollRaf = nativeRequestAnimationFrame(handleReplyEmojiScroll);
       }
     }, true);
   }
@@ -21678,9 +23996,15 @@
     bindTopicBlockContextMenu();
     bindReplyEmojiOutsideClick();
     installLocalSettingsStateSync();
-    await loadLocalSettingsState();
-    installAiSettingsSync();
+    // 立刻注样式先跑：不等 storage。（此前若 storage 链响应慢/超时,start() 会被
+    // await loadLocalSettingsState 卡住,导致样式全延时 6s+ 甚至永久不注入——即“样式全没”。)
     scheduleHandlePage();
+    loadLocalSettingsState().then(() => {
+      scheduleHandlePage();
+    }).catch(() => {
+      scheduleHandlePage();
+    });
+    installAiSettingsSync();
     observePage();
     installRouteHooks();
   }
